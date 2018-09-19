@@ -20,7 +20,6 @@
 /*** defines ***/
 
 #define KILO_VERSION "0.0.1"
-#define KILO_TAB_STOP 8
 #define KILO_QUIT_TIMES 1
 
 #define CTRL_KEY(k) ((k) & 0x1f)
@@ -45,9 +44,7 @@ enum editorKey {
 // This typedef erow is crucial
 typedef struct erow {
   int size; //the number of characters in the line
-  //int rsize; //number of characters because of tabs - one tab expands to X spaces
   char *chars; //points at the character array of a row - mem assigned by malloc
-  //char *render; //characters rendered because of tabs - no tabs don't need it
 } erow;
 
 struct editorConfig {
@@ -73,6 +70,7 @@ struct editorConfig E;
 void editorSetStatusMessage(const char *fmt, ...);
 void editorRefreshScreen();
 char *editorPrompt(char *prompt);
+void  getwordundercursor();
 
 /*** terminal ***/
 
@@ -125,7 +123,7 @@ int editorReadKey() {
   // if the character read was an escape, need to figure out if it was an escape sequence
   if (c == '\x1b') {
     char seq[3];
-    editorSetStatusMessage("You pressed %d", c); //slz
+    //editorSetStatusMessage("You pressed %d", c); //slz
     // the reads time out after 0.1 seconds
     if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
     if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
@@ -134,7 +132,7 @@ int editorReadKey() {
       if (seq[1] >= '0' && seq[1] <= '9') {
         if (read(STDIN_FILENO, &seq[2], 1) != 1) return '\x1b'; //need 4 bytes
         if (seq[2] == '~') {
-          editorSetStatusMessage("You pressed %c%c%c", seq[0], seq[1], seq[2]); //slz
+          //editorSetStatusMessage("You pressed %c%c%c", seq[0], seq[1], seq[2]); //slz
           switch (seq[1]) {
             case '1': return HOME_KEY; //not being issued
             case '3': return DEL_KEY; //<esc>[3~
@@ -146,7 +144,7 @@ int editorReadKey() {
           }
         }
       } else {
-          editorSetStatusMessage("You pressed %c%c", seq[0], seq[1]); //slz
+          //editorSetStatusMessage("You pressed %c%c", seq[0], seq[1]); //slz
           switch (seq[1]) {
             case 'A': return ARROW_UP; //<esc>[A
             case 'B': return ARROW_DOWN; //<esc>[B
@@ -166,31 +164,10 @@ int editorReadKey() {
     return '\x1b'; // if it doesn't match a known escape sequence like ] ... or O ... just return escape
 
   } else {
-      editorSetStatusMessage("You pressed %d", c); //slz
+      //editorSetStatusMessage("You pressed %d", c); //slz
       return c;
   }
 }
-
-// slz --> getCursorPosition not needed because ioctl(...TIOCGWINSZ) works
-/*int getCursorPosition(int *rows, int *cols) {
-  char buf[32];
-  unsigned int i = 0;
-
-  if (write(STDOUT_FILENO, "\x1b[6n", 4) != 4) return -1;
-
-  while (i < sizeof(buf) - 1) {
-    if (read(STDIN_FILENO, &buf[i], 1) != 1) break;
-    if (buf[i] == 'R') break;
-    i++;
-  }
-  buf[i] = '\0';
-
-  if (buf[0] != '\x1b' || buf[1] != '[') return -1;
-  // sscanf takes a c-string and can decompose it to put words into variables - "reads formatted input from a string
-  if (sscanf(&buf[2], "%d;%d", rows, cols) != 2) return -1;
-
-  return 0;
-}*/
 
 int getWindowSize(int *rows, int *cols) {
 
@@ -220,52 +197,7 @@ int getWindowSize(int *rows, int *cols) {
 
 /*** row operations ***/
 
-int editorRowCxToRx(erow *row, int cx) {
-  int rx = 0;
-  int j;
-  for (j = 0; j < cx; j++) {
-    if (row->chars[j] == '\t')
-      rx += (KILO_TAB_STOP - 1) - (rx % KILO_TAB_STOP);
-    rx++;
-  }
-  return rx;
-}
-
-// seems to really just deal with the fact of tabs
-// no tabs and you wouldn't really need this
-/*void editorUpdateRow(erow *row) {
-  int tabs = 0;
-  int j;
-  for (j = 0; j < row->size; j++)
-    if (row->chars[j] == '\t') tabs++;
-
-  free(row->render);
-  row->render = malloc(row->size + tabs*(KILO_TAB_STOP - 1) + 1);
-
-  int idx = 0;
-  for (j = 0; j < row->size; j++) {
-    if (row->chars[j] == '\t') {
-      row->render[idx++] = ' ';
-      while (idx % KILO_TAB_STOP != 0) row->render[idx++] = ' ';
-    } else {
-      row->render[idx++] = row->chars[j];
-    }
-  }
-  row->render[idx] = '\0';
-  row->rsize = idx;
-}*/
-
-// editorInsertRow(E.numrows, "Goodbye, world!", 15);
-// E.row - the type is typedef struct erow
-/*
-typedef struct erow {
-  int size;
-  int rsize;
-  char *chars;
-  char *render;
-} erow;
-*/
-//at is the row number to insert and generally determined by E.numrows
+//at is the row number of the row to insert
 void editorInsertRow(int at, char *s, size_t len) {
   if (at < 0 || at > E.numrows) return;
 
@@ -273,7 +205,7 @@ void editorInsertRow(int at, char *s, size_t len) {
   //The array of erows that E.row points to needs to have its memory enlarged when you add a row
   E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
   // memmove(dest, source, number of bytes to move?)
-  // moves the line at at to at+1 and all the other eror structs until the end
+  // moves the line at at to at+1 and all the other erow structs until the end
   // when you insert into the last row E.numrows==at then no memory is moved
   // apparently ok if there is no E.row[at+1] if number of bytes = 0
   memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * (E.numrows - at));
@@ -283,18 +215,11 @@ void editorInsertRow(int at, char *s, size_t len) {
   E.row[at].chars = malloc(len + 1);
   memcpy(E.row[at].chars, s, len);
   E.row[at].chars[len] = '\0';
-
-  //E.row[at].rsize = 0;
-  //E.row[at].render = NULL;
-
-  //editorUpdateRow(&E.row[at]); //really just creates rsize and render
-
   E.numrows++;
   E.dirty++;
 }
 
 void editorFreeRow(erow *row) {
-  //free(row->render);
   free(row->chars);
 }
 
@@ -305,24 +230,12 @@ void editorDelRow(int at) {
   E.numrows--;
   E.dirty++;
 }
-/*
-// editorRowInsertChar(&E.row[E.cy], E.cx, c);
-void editorRowInsertChar(erow *row, int at, int c) {
-  if (at < 0 || at > row->size) at = row->size;
-  row->chars = realloc(row->chars, row->size + 2);
-  memmove(&row->chars[at + 1], &row->chars[at], row->size - at + 1);
-  row->size++;
-  row->chars[at] = c;
-  editorUpdateRow(row); //seems only to deal with tabs
-  E.dirty++;
-}*/
 
 void editorRowAppendString(erow *row, char *s, size_t len) {
   row->chars = realloc(row->chars, row->size + len + 1);
   memcpy(&row->chars[row->size], s, len);
   row->size += len;
   row->chars[row->size] = '\0';
-  //editorUpdateRow(row);
   E.dirty++;
 }
 
@@ -330,25 +243,26 @@ void editorRowDelChar(erow *row, int at) {
   if (at < 0 || at >= row->size) return;
   memmove(&row->chars[at], &row->chars[at + 1], row->size - at);
   row->size--;
-  //editorUpdateRow(row);
   E.dirty++;
 }
 
 /*** editor operations ***/
-// just inserts a row if at the end of the file
 void editorInsertChar(int c) {
   //E.cy is the cursor y position
+  // inserts a row if at the end of the file
   if (E.cy == E.numrows) {
     editorInsertRow(E.numrows, "", 0);
   }
-  // editorRowInsertChar(&E.row[E.cy], E.cx, c);
+
   erow *row = &E.row[E.cy];
   if (E.cx < 0 || E.cx > row->size) E.cx = row->size;
-  row->chars = realloc(row->chars, row->size + 2);
+  // we have to insert a char so we need more memory
+  // why 2 more bytes??
+  // we add 2 because we also have to make room for the null byte??????
+  row->chars = realloc(row->chars, row->size + 1); //******* 2
   memmove(&row->chars[E.cx + 1], &row->chars[E.cx], row->size - E.cx + 1);
   row->size++;
   row->chars[E.cx] = c;
-  //editorUpdateRow(row); //seems only to deal with tabs
   E.dirty++;
   E.cx++;
 }
@@ -362,7 +276,6 @@ void editorInsertNewline() {
     row = &E.row[E.cy];
     row->size = E.cx;
     row->chars[row->size] = '\0';
-    //editorUpdateRow(row);
   }
   E.cy++;
   E.cx = 0;
@@ -374,13 +287,10 @@ void editorDelChar() {
 
   erow *row = &E.row[E.cy];
   if (E.cx > 0) {
-    //editorRowDelChar(row, E.cx - 1);
     if (E.cx < 1 || E.cx >= 1+row->size) return;
     memmove(&row->chars[E.cx - 1], &row->chars[E.cx], row->size - E.cx + 1);
     row->size--;
-    //editorUpdateRow(row);
     E.dirty++;
-
     E.cx--;
   } else {
     E.cx = E.row[E.cy - 1].size;
@@ -502,10 +412,6 @@ void abFree(struct abuf *ab) {
 /*** output ***/
 
 void editorScroll() {
-  E.rx = 0;
-  if (E.cy < E.numrows) {
-    E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
-  }
 
   if (E.cy < E.rowoff) {
     E.rowoff = E.cy;
@@ -513,11 +419,11 @@ void editorScroll() {
   if (E.cy >= E.rowoff + E.screenrows) {
     E.rowoff = E.cy - E.screenrows + 1;
   }
-  if (E.rx < E.coloff) {
-    E.coloff = E.rx;
+  if (E.cx < E.coloff) {
+    E.coloff = E.cx;
   }
-  if (E.rx >= E.coloff + E.screencols) {
-    E.coloff = E.rx - E.screencols + 1;
+  if (E.cx >= E.coloff + E.screencols) {
+    E.coloff = E.cx - E.screencols + 1;
   }
 }
 // "drawing" rows really means updating the ab buffer
@@ -542,11 +448,9 @@ void editorDrawRows(struct abuf *ab) {
         abAppend(ab, "~", 1);
       }
     } else {
-      //int len = E.row[filerow].rsize - E.coloff;
       int len = E.row[filerow].size - E.coloff;
       if (len < 0) len = 0;
       if (len > E.screencols) len = E.screencols;
-      // abAppend(ab, &E.row[filerow].render[E.coloff], len);
       abAppend(ab, &E.row[filerow].chars[E.coloff], len);
     }
 
@@ -592,7 +496,7 @@ void editorDrawMessageBar(struct abuf *ab) {
 }
 
 // this is continuously called by main
-int nn = 0;
+//int nn = 0;
 void editorRefreshScreen() {
   editorScroll();
 
@@ -610,22 +514,23 @@ void editorRefreshScreen() {
   editorDrawRows(&ab);
   editorDrawStatusBar(&ab);
   editorDrawMessageBar(&ab);
-  abAppend(&ab, " -> ", 4);
+
+  /*abAppend(&ab, " -> ", 4);
   char str[10];
   sprintf(str, "%d", nn); //str is a pointer to the char array
-  abAppend(&ab, str, 3);
+  abAppend(&ab, str, 3);*/
 
   // the lines below position the cursor where it should go
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1,
-                                            (E.rx - E.coloff) + 1);
+                                            (E.cx - E.coloff) + 1);
   abAppend(&ab, buf, strlen(buf));
 
   abAppend(&ab, "\x1b[?25h", 6); //shows the cursor
 
   write(STDOUT_FILENO, ab.b, ab.len);
   abFree(&ab);
-  nn++;
+ // nn++;
 }
 /*va_list, va_start(), and va_end() come from <stdarg.h> and vsnprintf() is
 from <stdio.h> and time() is from <time.h>.  stdarg.h allows functions to accept a
@@ -763,9 +668,8 @@ void editorProcessKeypress() {
       break;
 
     case BACKSPACE:
-    //case CTRL_KEY('h'):
+    //case CTRL_KEY('h'): //slz - didn't think needed ctrl-h for backspace
     case DEL_KEY:
-      //if (c == DEL_KEY) editorMoveCursor(ARROW_RIGHT); //slz to make it clearer
       if (c == DEL_KEY) {
         editorMoveCursor(ARROW_RIGHT);}
       editorDelChar();
@@ -801,10 +705,9 @@ void editorProcessKeypress() {
 
    // below is slz testing
     case CTRL_KEY('h'):
-      editorInsertChar('*');
+      //editorInsertChar('*');
+      getwordundercursor();
       break;
-
-
 
     default:
       editorInsertChar(c);
@@ -813,17 +716,21 @@ void editorProcessKeypress() {
 
   quit_times = KILO_QUIT_TIMES;
 }
-
+/*** slz testing stuff ***/
+void getwordundercursor() {
+  erow *row = &E.row[E.cy];
+  char d = row->chars[E.cx];
+  editorSetStatusMessage("character under cursor: %c", d); 
+}
 /*** init ***/
 
 void initEditor() {
-  E.cx = 0;
-  E.cy = 0;
-  E.rx = 0;
-  E.rowoff = 0;
-  E.coloff = 0;
-  E.numrows = 0;
-  E.row = NULL;
+  E.cx = 0; //cursor x position
+  E.cy = 0; //cursor y position
+  E.rowoff = 0;  //row the user is currently scrolled to  
+  E.coloff = 0;  //col the user is currently scrolled to  
+  E.numrows = 0; //number of rows of text
+  E.row = NULL; //pointer to the erow structure 'array'
   E.dirty = 0;
   E.filename = NULL;
   E.statusmsg[0] = '\0'; // inital statusmsg is ""
@@ -846,11 +753,12 @@ int main(int argc, char *argv[]) {
   }
 
   //editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-Q = quit"); //slz commented this out
-  editorSetStatusMessage("rows: %d  cols: %d", E.screenrows, E.screencols); //this works prings rows: 43  cols: 159
+  editorSetStatusMessage("rows: %d  cols: %d", E.screenrows, E.screencols); //this works prints rows: 43  cols: 159
 
   while (1) {
     editorRefreshScreen(); //screen is refreshed after every key press
     editorProcessKeypress();
+    editorSetStatusMessage("row: %d  col: %d", E.cy, E.cx); //shows row and column
   }
 
   return 0;
