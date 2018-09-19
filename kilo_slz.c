@@ -201,20 +201,29 @@ int getWindowSize(int *rows, int *cols) {
 void editorInsertRow(int at, char *s, size_t len) {
   if (at < 0 || at > E.numrows) return;
 
-  //E.row is a pointer to an array of erow structures
-  //The array of erows that E.row points to needs to have its memory enlarged when you add a row
+  /*E.row is a pointer to an array of erow structures
+  The array of erows that E.row points to needs to have its memory enlarged when
+  you add a row*/
+
   E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
-  // memmove(dest, source, number of bytes to move?)
-  // moves the line at at to at+1 and all the other erow structs until the end
-  // when you insert into the last row E.numrows==at then no memory is moved
-  // apparently ok if there is no E.row[at+1] if number of bytes = 0
+
+  /*
+  memmove(dest, source, number of bytes to move?)
+  moves the line at at to at+1 and all the other erow structs until the end
+  when you insert into the last row E.numrows==at then no memory is moved
+  apparently ok if there is no E.row[at+1] if number of bytes = 0
+  so below we are moving the row structure currently at *at* to x+1
+  and all the rows below *at* to a new location to make room at *at*
+  to create room for the line that we are inserting
+  */
+
   memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * (E.numrows - at));
 
   // section below nice - creates an erow struct for the new row
   E.row[at].size = len;
   E.row[at].chars = malloc(len + 1);
   memcpy(E.row[at].chars, s, len);
-  E.row[at].chars[len] = '\0';
+  E.row[at].chars[len] = '\0'; //not sure why terminating with ""
   E.numrows++;
   E.dirty++;
 }
@@ -251,7 +260,7 @@ void editorInsertChar(int c) {
   //E.cy is the cursor y position
   // inserts a row if at the end of the file
   if (E.cy == E.numrows) {
-    editorInsertRow(E.numrows, "", 0);
+    editorInsertRow(E.numrows, "", 0); //editorInsertRow will also insert another '\0'
   }
 
   erow *row = &E.row[E.cy];
@@ -259,8 +268,17 @@ void editorInsertChar(int c) {
   // we have to insert a char so we need more memory
   // why 2 more bytes??
   // we add 2 because we also have to make room for the null byte??????
-  row->chars = realloc(row->chars, row->size + 1); //******* 2
-  memmove(&row->chars[E.cx + 1], &row->chars[E.cx], row->size - E.cx + 1);
+  // no we added to because mmove added 1, which doesn't seem necessary
+  row->chars = realloc(row->chars, row->size + 1); //******* was size + 2
+
+  /* moving all the chars at the current x cursor position on char
+     farther down the char string to make room for the new character
+     Maybe a clue from editorInsertRow - it's memmove is below
+     memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * (E.numrows - at));
+  */
+
+  memmove(&row->chars[E.cx + 1], &row->chars[E.cx], row->size - E.cx); //****was E.cx + 1
+
   row->size++;
   row->chars[E.cx] = c;
   E.dirty++;
@@ -586,7 +604,10 @@ char *editorPrompt(char *prompt) {
 }
 
 void editorMoveCursor(int key) {
-  erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
+  //erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy]; //orig
+  //erow *row = (E.cy == E.numrows) ? NULL : &E.row[E.cy]; //my initial
+  //not sure we need the check
+  erow *row = &E.row[E.cy];
 
   switch (key) {
     case ARROW_LEFT:
@@ -598,12 +619,16 @@ void editorMoveCursor(int key) {
       }
       break;
     case ARROW_RIGHT:
-      if (row && E.cx < row->size) {
+      //if (row && E.cx < row->size) { //original
+      if (E.cx < row->size) {
         E.cx++;
-      } else if (row && E.cx == row->size) {
+      } 
+      /*do nothing if cursor is at end of last line*/
+      //else if (row && E.cx == row->size && E.cy != E.numrows-1) { //original
+      else if (E.cx == row->size && E.cy != E.numrows-1) {
         E.cy++;
         E.cx = 0;
-      }
+     }
       break;
     case ARROW_UP:
       if (E.cy != 0) {
@@ -611,7 +636,7 @@ void editorMoveCursor(int key) {
       }
       break;
     case ARROW_DOWN:
-      if (E.cy < E.numrows) {
+      if (E.cy < E.numrows-1) { //slz change added -1
         E.cy++;
       }
       break;
@@ -758,8 +783,9 @@ int main(int argc, char *argv[]) {
   while (1) {
     editorRefreshScreen(); //screen is refreshed after every key press
     editorProcessKeypress();
-    editorSetStatusMessage("row: %d  col: %d", E.cy, E.cx); //shows row and column
+    editorSetStatusMessage("row: %d  col: %d size: %d", E.cy, E.cx, E.row[E.cy].size); //shows row and column
   }
+  //erow *row = &E.row[E.cy];
 
   return 0;
 }
