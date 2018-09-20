@@ -71,7 +71,7 @@ void editorSetStatusMessage(const char *fmt, ...);
 void editorRefreshScreen();
 char *editorPrompt(char *prompt);
 void  getcharundercursor();
-void  getwordundercursor();
+void  getwordundercursor(int c);
 
 /*** terminal ***/
 
@@ -732,7 +732,13 @@ void editorProcessKeypress() {
    // below is slz testing
     case CTRL_KEY('h'):
       //editorInsertChar('*');
-      getwordundercursor();
+      getwordundercursor(c);
+      break;
+
+   // below is slz testing
+    case CTRL_KEY('b'):
+      //editorInsertChar('*');
+      getwordundercursor(c);
       break;
 
     default:
@@ -748,7 +754,7 @@ void getcharundercursor() {
   char d = row->chars[E.cx];
   editorSetStatusMessage("character under cursor: %c", d); 
 }
-void getwordundercursor() {
+void getwordundercursor(int c) {
   erow *row = &E.row[E.cy];
   if (row->chars[E.cx] < 48) return;
 
@@ -764,8 +770,20 @@ void getwordundercursor() {
       d[n] = row->chars[x];
   }
   d[n] = '\0';
+  
+  E.cx = i + 1;
+  editorInsertChar('*');
+  E.cx = j + 1;
+  editorInsertChar('*');
 
-  editorSetStatusMessage("word under cursor: *%s*; start of word: %d; end of word: %d; n: %d; cursor: %d", d, i+1, j-1, n, E.cx); 
+  if (c == CTRL_KEY('b')) {
+    E.cx = i + 1;
+    editorInsertChar('*');
+    E.cx = j + 2;
+    editorInsertChar('*');
+  }
+
+  editorSetStatusMessage("word under cursor: <%s>; start of word: %d; end of word: %d; n: %d; cursor: %d", d, i+1, j-1, n, E.cx); 
 }
 /*** init ***/
 
@@ -794,7 +812,10 @@ int main(int argc, char *argv[]) {
   //I added the else - inserts text when no file is being read
   else {
     editorInsertRow(E.numrows, "Hello, Steve!", 13); //slz adds
-    editorInsertRow(E.numrows, "Goodbye, world!", 15); //slz adds
+    E.cx = E.row[E.cy].size; //put cursor at end of line
+    editorInsertNewline(); //slz adds 
+    editorInsertRow(E.numrows, "The rain in Spain falls mainly on the plain", 43); //slz adds
+    E.cy = 2; //puts cursor at end of line above
   }
 
   //editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-Q = quit"); //slz commented this out
