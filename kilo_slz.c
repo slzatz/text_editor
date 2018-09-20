@@ -70,6 +70,7 @@ struct editorConfig E;
 void editorSetStatusMessage(const char *fmt, ...);
 void editorRefreshScreen();
 char *editorPrompt(char *prompt);
+void  getcharundercursor();
 void  getwordundercursor();
 
 /*** terminal ***/
@@ -742,10 +743,29 @@ void editorProcessKeypress() {
   quit_times = KILO_QUIT_TIMES;
 }
 /*** slz testing stuff ***/
-void getwordundercursor() {
+void getcharundercursor() {
   erow *row = &E.row[E.cy];
   char d = row->chars[E.cx];
   editorSetStatusMessage("character under cursor: %c", d); 
+}
+void getwordundercursor() {
+  erow *row = &E.row[E.cy];
+  if (row->chars[E.cx] < 48) return;
+
+  char d[30]; //at some point need to take care of fact will die if word > 30
+  int i,j,n,x;
+  for (i = E.cx - 1; i > -1; i--){
+    if (row->chars[i] < 48) break;
+    }
+  for (j = E.cx + 1; j < row->size ; j++) {
+    if (row->chars[j] < 48) break;
+  }
+  for (x = i + 1, n = 0; x < j; x++, n++) {
+      d[n] = row->chars[x];
+  }
+  d[n] = '\0';
+
+  editorSetStatusMessage("word under cursor: *%s*; start of word: %d; end of word: %d; n: %d; cursor: %d", d, i+1, j-1, n, E.cx); 
 }
 /*** init ***/
 
@@ -783,7 +803,7 @@ int main(int argc, char *argv[]) {
   while (1) {
     editorRefreshScreen(); //screen is refreshed after every key press
     editorProcessKeypress();
-    editorSetStatusMessage("row: %d  col: %d size: %d", E.cy, E.cx, E.row[E.cy].size); //shows row and column
+    //editorSetStatusMessage("row: %d  col: %d size: %d", E.cy, E.cx, E.row[E.cy].size); //shows row and column
   }
   //erow *row = &E.row[E.cy];
 
