@@ -61,6 +61,7 @@ struct editorConfig {
   char statusmsg[80]; //status msg is a character array max 80 char
   time_t statusmsg_time;
   struct termios orig_termios;
+  int highlight[2];
 };
 
 struct editorConfig E;
@@ -470,11 +471,17 @@ void editorDrawRows(struct abuf *ab) {
       int len = E.row[filerow].size - E.coloff;
       if (len < 0) len = 0;
       if (len > E.screencols) len = E.screencols;
+      if (filerow >= E.highlight[0] && filerow <= E.highlight[1]) {
+          //abAppend(ab, "\x1b[47m", 5);
+          abAppend(ab, "\x1b[48;5;242m", 11);
+          }
       abAppend(ab, &E.row[filerow].chars[E.coloff], len);
-    }
+    
 
     abAppend(ab, "\x1b[K", 3); //erases the part of the line to the right of the cursor in case the new line is shorter than the old
+    }
     abAppend(ab, "\r\n", 2);
+    abAppend(ab, "\x1b[0m", 5); //slz return background to normal
   }
 }
 //status bar has inverted colors
@@ -737,6 +744,7 @@ void editorProcessKeypress() {
 
    // below is slz testing
     case CTRL_KEY('b'):
+    case CTRL_KEY('e'):
       //editorInsertChar('*');
       getwordundercursor(c);
       break;
@@ -771,6 +779,7 @@ void getwordundercursor(int c) {
   }
   d[n] = '\0';
   
+  if (row->chars[i] != '*'){
   E.cx = i + 1;
   editorInsertChar('*');
   E.cx = j + 1;
@@ -782,7 +791,20 @@ void getwordundercursor(int c) {
     E.cx = j + 2;
     editorInsertChar('*');
   }
+  } else {
+  E.cx = i+1;
+  editorDelChar();
+  E.cx = j;
+  editorDelChar();
 
+  if (c == CTRL_KEY('b')) {
+    E.cx = i;
+    editorDelChar();
+    E.cx = j-1;
+    editorDelChar();
+  }
+  }
+  E.highlight[0] = E.highlight[1] = 2;
   editorSetStatusMessage("word under cursor: <%s>; start of word: %d; end of word: %d; n: %d; cursor: %d", d, i+1, j-1, n, E.cx); 
 }
 /*** init ***/
@@ -798,6 +820,7 @@ void initEditor() {
   E.filename = NULL;
   E.statusmsg[0] = '\0'; // inital statusmsg is ""
   E.statusmsg_time = 0;
+  E.highlight[0] = E.highlight[1] = -1;
 
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
   E.screenrows -= 2;
