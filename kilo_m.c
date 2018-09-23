@@ -37,6 +37,17 @@ enum editorKey {
   PAGE_DOWN
 };
 
+enum Command {
+  C_x,
+  C_s,
+  C_i,
+  C_I,
+  C_cw,
+  C_dw,
+  C_d$,
+  C_c$
+};
+
 /*** data ***/
 
 // apparently some c experts say you shouldn't typedef structs
@@ -63,18 +74,63 @@ struct editorConfig {
   struct termios orig_termios;
   int highlight[2];
   int mode;
+  char command[7];
+  int multiplier;
 };
 
 struct editorConfig E;
+
+typedef struct { char *key; int val; } t_symstruct;
+static t_symstruct lookuptable[] = {
+  {"x", C_x},
+  {"s", C_s},
+  {"i", C_i},
+  {"I", C_I},
+  {"cw", C_cw},
+  {"dw", C_dw},
+  {"d$", C_d$}
+};
+
+//#define NKEYS (sizeof(lookuptable)/sizeof(t_symstruct))
+//#define int NKEYS 8
+//int NKEYS = 8;
+#define NKEYS ((int) (sizeof(lookuptable)/sizeof(lookuptable[0])))
 
 /*** prototypes ***/
 
 void editorSetStatusMessage(const char *fmt, ...);
 void editorRefreshScreen();
 char *editorPrompt(char *prompt);
-void  getcharundercursor();
-void  getwordundercursor(int c);
+void getcharundercursor();
+void getwordundercursor(int c);
+void editorDelWord();
 
+int keyfromstring(char *key)
+{
+    int i;
+    for (i=0; i <  NKEYS; i++) {
+
+        /* for reasons that aren't clear this doesn't work but
+           not necessary to do it this way - the problem may
+           be that there is padding in the array of structures
+           so that the size of the structure doesn't necessarily
+           tell you where the next structure begins
+
+        t_symstruct *sym = lookuptable + i*sizeof(t_symstruct); 
+
+         The below does work but why create new pointer sym
+           when you don't have to
+
+        if (strcmp(sym->key, key) == 0)
+             return sym->val;*/
+
+        if (strcmp(lookuptable[i].key, key) == 0)
+             return lookuptable[i].val;
+    }
+
+    //nothing should match -1
+    return -1;
+}
 /*** terminal ***/
 
 void die(const char *s) {
@@ -518,7 +574,7 @@ void editorDrawMessageBar(struct abuf *ab) {
   abAppend(ab, "\x1b[K", 3);
   int msglen = strlen(E.statusmsg);
   if (msglen > E.screencols) msglen = E.screencols;
-  if (msglen && time(NULL) - E.statusmsg_time < 5)
+  if (msglen && time(NULL) - E.statusmsg_time < 1000) //time
     abAppend(ab, E.statusmsg, msglen);
 }
 
@@ -752,6 +808,7 @@ void editorProcessKeypress() {
 
     case '\x1b':
       E.mode = 0;
+      editorSetStatusMessage("");
       break;
 
     default:
@@ -761,21 +818,102 @@ void editorProcessKeypress() {
  } 
   quit_times = KILO_QUIT_TIMES;
  }  else {
+ 
+  /*would check if digit right here*/
+  if (isdigit(c)) {
+    E.multiplier = c - 48;
+    return;}
 
-         switch (c) {
-         case 'x':
+
+
+
+   switch (c) {
+
+    case ARROW_UP:
+    case ARROW_DOWN:
+    case ARROW_LEFT:
+    case ARROW_RIGHT:
+      editorMoveCursor(c);
+      return;
+
+    case '\x1b':
+     // E.mode = 0;
+      E.command[0] = '\0';
+      return;
+}
+
+
+         int n = strlen(E.command);
+         E.command[n] = c;
+         E.command[n+1] = '\0';
+
+         //switch (c) {
+         switch (keyfromstring(E.command)) {
+         //case 'x':
+         case C_x:
+         for (int i = 0; i < E.multiplier; i++){
           editorMoveCursor(ARROW_RIGHT);
-          editorDelChar();
+          editorDelChar();}
+          E.command[0] = '\0';
+          E.multiplier = 1;
           break;
         
-         case 'i':
+         case C_s:
+         for (int i = 0; i < E.multiplier; i++){
+          editorMoveCursor(ARROW_RIGHT);
+          editorDelChar();}
+          E.command[0] = '\0';
+          E.multiplier = 1;
           E.mode = 1;
+          editorSetStatusMessage("-- INSERT --");
+          break;
+
+         case C_dw:
+         for (int i = 0; i < E.multiplier; i++){
+          //editorMoveCursor(ARROW_RIGHT);
+          editorDelWord();}
+          E.command[0] = '\0';
+          E.multiplier = 1;
+          break;
+
+         //case 'i':
+         case C_i:
+          E.mode = 1;
+          E.command[0] = '\0';
+          E.multiplier = 1;
+          editorSetStatusMessage("-- INSERT --");
+          break;
+
+         default:
+           break;
+
         }
-      editorSetStatusMessage("You pressed %d", c); //slz
+      //editorSetStatusMessage("Command is %s", &E.command); //slz
       //if (c == 'i') E.mode = 1;
     }
 }
 /*** slz testing stuff ***/
+void editorDelWord() {
+  erow *row = &E.row[E.cy];
+  if (row->chars[E.cx] < 48) return;
+
+  int i,j,x;
+  for (i = E.cx; i > -1; i--){
+    if (row->chars[i] < 48) break;
+    }
+  for (j = E.cx; j < row->size ; j++) {
+    if (row->chars[j] < 48) break;
+  }
+  E.cx = i+1;
+
+  for (x = 0 ; x < j-i; x++) {
+      editorMoveCursor(ARROW_RIGHT);
+      editorDelChar();
+  }
+  //editorSetStatusMessage("i = %d, j = %d", i, j ); 
+}
+
+
 void getcharundercursor() {
   erow *row = &E.row[E.cy];
   char d = row->chars[E.cx];
@@ -790,7 +928,7 @@ void getwordundercursor(int c) {
   for (i = E.cx - 1; i > -1; i--){
     if (row->chars[i] < 48) break;
     }
-  for (j = E.cx + 1; j < row->size ; j++) {
+ for (j = E.cx + 1; j < row->size ; j++) {
     if (row->chars[j] < 48) break;
   }
   for (x = i + 1, n = 0; x < j; x++, n++) {
@@ -841,6 +979,8 @@ void initEditor() {
   E.statusmsg_time = 0;
   E.highlight[0] = E.highlight[1] = -1;
   E.mode = 1;
+  E.command[0] = '\0';
+  E.multiplier = 1;
 
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
   E.screenrows -= 2;
