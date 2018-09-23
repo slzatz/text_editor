@@ -42,9 +42,13 @@ enum Command {
   C_s,
   C_i,
   C_I,
-  C_cw,
-  C_dw,
+  C_caw,
+  C_daw,
   C_d$,
+  C_indent,
+  C_unindent,
+  C_o,
+  C_O,
   C_c$
 };
 
@@ -67,7 +71,7 @@ struct editorConfig {
   int screencols;  //number of rows and columns in the display
   int numrows; // the number of rows of text so last text row is always row numrows
   erow *row; //(e)ditorrow stores a pointer to an erow structure 
-  int dirty;
+  int dirty; //file changes since last save
   char *filename;
   char statusmsg[80]; //status msg is a character array max 80 char
   time_t statusmsg_time;
@@ -86,8 +90,12 @@ static t_symstruct lookuptable[] = {
   {"s", C_s},
   {"i", C_i},
   {"I", C_I},
-  {"cw", C_cw},
-  {"dw", C_dw},
+  {"O", C_O},
+  {"o", C_o},
+  {"caw", C_caw},
+  {"daw", C_daw},
+  {">>", C_indent},
+  {"<<", C_unindent},
   {"d$", C_d$}
 };
 
@@ -104,6 +112,8 @@ char *editorPrompt(char *prompt);
 void getcharundercursor();
 void getwordundercursor(int c);
 void editorDelWord();
+void editorIndentRow();
+void editorUnIndentRow();
 
 int keyfromstring(char *key)
 {
@@ -365,6 +375,9 @@ void editorDelChar() {
   erow *row = &E.row[E.cy];
   if (E.cx > 0) {
     if (E.cx < 1 || E.cx >= 1+row->size) return;
+
+    //memmove(dest, source, number of bytes to move?)
+
     memmove(&row->chars[E.cx - 1], &row->chars[E.cx], row->size - E.cx + 1);
     row->size--;
     E.dirty++;
@@ -716,6 +729,7 @@ void editorMoveCursor(int key) {
 // higher level editor function depends on editorReadKey()
 void editorProcessKeypress() {
   static int quit_times = KILO_QUIT_TIMES;
+  int i;
 
   int c = editorReadKey(); //this is the money shot that brings back a c that has been processed
   if (E.mode == 1){
@@ -817,82 +831,147 @@ void editorProcessKeypress() {
  
  } 
   quit_times = KILO_QUIT_TIMES;
+
+/*************************************** 
+ * This is where you enter command mode* 
+ ***************************************/
+
  }  else {
  
-  /*would check if digit right here*/
+  /*leading digit is a multiplier*/
   if (isdigit(c)) {
     E.multiplier = c - 48;
     return;}
 
-
-
-
-   switch (c) {
+  switch (c) {
 
     case ARROW_UP:
     case ARROW_DOWN:
     case ARROW_LEFT:
     case ARROW_RIGHT:
       editorMoveCursor(c);
+      E.command[0] = '\0'; //untested but I believe arrow should reset command
       return;
 
     case '\x1b':
      // E.mode = 0;
       E.command[0] = '\0';
       return;
-}
+  }
 
+  int n = strlen(E.command);
+  E.command[n] = c;
+  E.command[n+1] = '\0';
 
-         int n = strlen(E.command);
-         E.command[n] = c;
-         E.command[n+1] = '\0';
+  switch (keyfromstring(E.command)) {
+     //case 'x':
+    case C_x:
+     for (int i = 0; i < E.multiplier; i++){
+      // BACKSPACE doesn't require cursor move by DEL;x;s do
+      editorMoveCursor(ARROW_RIGHT);
+      editorDelChar();}
+      E.command[0] = '\0';
+      E.multiplier = 1;
+      break;
+    
+    case C_s:
+     for (int i = 0; i < E.multiplier; i++){
+      editorMoveCursor(ARROW_RIGHT);
+      editorDelChar();}
+      E.command[0] = '\0';
+      E.multiplier = 1;
+      E.mode = 1;
+      editorSetStatusMessage("-- INSERT --");
+      break;
 
-         //switch (c) {
-         switch (keyfromstring(E.command)) {
-         //case 'x':
-         case C_x:
-         for (int i = 0; i < E.multiplier; i++){
-          editorMoveCursor(ARROW_RIGHT);
-          editorDelChar();}
-          E.command[0] = '\0';
-          E.multiplier = 1;
-          break;
-        
-         case C_s:
-         for (int i = 0; i < E.multiplier; i++){
-          editorMoveCursor(ARROW_RIGHT);
-          editorDelChar();}
-          E.command[0] = '\0';
-          E.multiplier = 1;
-          E.mode = 1;
-          editorSetStatusMessage("-- INSERT --");
-          break;
+    case C_daw:
+     for (int i = 0; i < E.multiplier; i++){
+      editorDelWord();}
+      E.command[0] = '\0';
+      E.multiplier = 1;
+      break;
 
-         case C_dw:
-         for (int i = 0; i < E.multiplier; i++){
-          //editorMoveCursor(ARROW_RIGHT);
-          editorDelWord();}
-          E.command[0] = '\0';
-          E.multiplier = 1;
-          break;
+    case C_caw:
+     for (int i = 0; i < E.multiplier; i++){
+      editorDelWord();}
+      E.command[0] = '\0';
+      E.multiplier = 1;
+      E.mode = 1;
+      break;
 
-         //case 'i':
-         case C_i:
-          E.mode = 1;
-          E.command[0] = '\0';
-          E.multiplier = 1;
-          editorSetStatusMessage("-- INSERT --");
-          break;
+    case C_indent:
+      for ( i = 0; i < E.multiplier; i++ ) {
+        editorIndentRow();
+        E.cy++;}
+      E.cy-=i;
+      E.command[0] = '\0';
+      E.multiplier = 1;
+      break;
 
-         default:
-           break;
+    case C_unindent:
+      for ( i = 0; i < E.multiplier; i++ ) {
+        editorUnIndentRow();
+        E.cy++;}
+      E.cy-=i;
+      E.command[0] = '\0';
+      E.multiplier = 1;
+      break;
 
-        }
+    case C_o:
+      E.cy++;
+      E.cx = 0;
+      editorInsertNewline();
+      E.cy--;
+      E.mode = 1;
+      E.command[0] = '\0';
+      E.multiplier = 1;
+      break;
+
+    case C_O:
+      E.cx = 0;
+      editorInsertNewline();
+      E.cy--;
+      E.mode = 1;
+      E.command[0] = '\0';
+      E.multiplier = 1;
+      break;
+
+    case C_i:
+      E.mode = 1;
+      E.command[0] = '\0';
+      E.multiplier = 1;
+      editorSetStatusMessage("-- INSERT --");
+      break;
+
+    default:
+      break;
+
+    } //switch
       //editorSetStatusMessage("Command is %s", &E.command); //slz
       //if (c == 'i') E.mode = 1;
-    }
+  } //else
 }
-/*** slz testing stuff ***/
+
+/*** slz additions ***/
+void editorIndentRow() {
+  erow *row = &E.row[E.cy];
+  if (row->size == 0) return;
+  E.cx = 0;
+  for (int i = 0; i < 4; i++) editorInsertChar(' ');
+}
+
+void editorUnIndentRow() {
+  erow *row = &E.row[E.cy];
+  if (row->size == 0) return;
+  E.cx = 0;
+  for (int i = 0; i < 4; i++) {
+    if (row->chars[0] == ' ') {
+      editorMoveCursor(ARROW_RIGHT);
+      editorDelChar();
+    }
+  }
+}
+
 void editorDelWord() {
   erow *row = &E.row[E.cy];
   if (row->chars[E.cx] < 48) return;
@@ -913,7 +992,7 @@ void editorDelWord() {
   //editorSetStatusMessage("i = %d, j = %d", i, j ); 
 }
 
-
+/*** slz testing stuff ***/
 void getcharundercursor() {
   erow *row = &E.row[E.cy];
   char d = row->chars[E.cx];
