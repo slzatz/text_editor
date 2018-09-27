@@ -45,6 +45,7 @@ enum Command {
   C_caw,
   C_daw,
   C_d$,
+  C_dd,
   C_indent,
   C_unindent,
   C_o,
@@ -94,14 +95,12 @@ static t_symstruct lookuptable[] = {
   {"o", C_o},
   {"caw", C_caw},
   {"daw", C_daw},
+  {"dd", C_dd},
   {">>", C_indent},
   {"<<", C_unindent},
   {"d$", C_d$}
 };
 
-//#define NKEYS (sizeof(lookuptable)/sizeof(t_symstruct))
-//#define int NKEYS 8
-//int NKEYS = 8;
 #define NKEYS ((int) (sizeof(lookuptable)/sizeof(lookuptable[0])))
 
 /*** prototypes ***/
@@ -110,10 +109,13 @@ void editorSetStatusMessage(const char *fmt, ...);
 void editorRefreshScreen();
 char *editorPrompt(char *prompt);
 void getcharundercursor();
-void getwordundercursor(int c);
+void editorDecorateWord(int c);
 void editorDelWord();
 void editorIndentRow();
 void editorUnIndentRow();
+int editorIndentAmount(int y);
+void editorMoveCursor(int key);
+void editorDelChar();
 
 int keyfromstring(char *key)
 {
@@ -189,7 +191,11 @@ int editorReadKey() {
     if (nread == -1 && errno != EAGAIN) die("read");
   }
 
-  // if the character read was an escape, need to figure out if it was an escape sequence
+  /* if the character read was an escape, need to figure out if it was
+     a recognized escape sequence or an isolated escape to switch from
+     insert mode to normal mode or to reset in normal mode
+  */
+
   if (c == '\x1b') {
     char seq[3];
     //editorSetStatusMessage("You pressed %d", c); //slz
@@ -354,18 +360,35 @@ void editorInsertChar(int c) {
   E.cx++;
 }
 
-void editorInsertNewline() {
-  if (E.cx == 0) {
-    editorInsertRow(E.cy, "", 0);
-  } else {
-    erow *row = &E.row[E.cy];
+void editorInsertNewline(int direction) {
+  erow *row = &E.row[E.cy];
+  int i;
+  if (E.cx == 0 || E.cx == row->size) {
+    char spaces[20] = "                   ";
+    i = editorIndentAmount(E.cy);
+    spaces[i] = '\0';
+    E.cy+=direction;
+    editorInsertRow(E.cy, spaces, i);
+    E.cx = i;
+  }
+  else {
     editorInsertRow(E.cy + 1, &row->chars[E.cx], row->size - E.cx);
     row = &E.row[E.cy];
     row->size = E.cx;
     row->chars[row->size] = '\0';
+    i = editorIndentAmount(E.cy);
+    E.cy++;
+    row = &E.row[E.cy];
+    E.cx = 0;
+    for (;;){
+      if (row->chars[0] != ' ') break;
+      editorMoveCursor(ARROW_RIGHT);
+      editorDelChar();
+    }
+
+  for ( int j=0; j < i; j++ ) editorInsertChar(' ');
+  E.cx = i;
   }
-  E.cy++;
-  E.cx = 0;
 }
 
 void editorDelChar() {
@@ -541,10 +564,18 @@ void editorDrawRows(struct abuf *ab) {
       int len = E.row[filerow].size - E.coloff;
       if (len < 0) len = 0;
       if (len > E.screencols) len = E.screencols;
+      
+      /*slz addition that checks to see if a row should
+        be highlighted -- not sure this will ever be
+        used but would be necessary if I introduce
+        a limited version of vim visual mode
+        */
+
       if (filerow >= E.highlight[0] && filerow <= E.highlight[1]) {
           //abAppend(ab, "\x1b[47m", 5);
           abAppend(ab, "\x1b[48;5;242m", 11);
           }
+
       abAppend(ab, &E.row[filerow].chars[E.coloff], len);
     
 
@@ -731,11 +762,18 @@ void editorProcessKeypress() {
   static int quit_times = KILO_QUIT_TIMES;
   int i;
 
-  int c = editorReadKey(); //this is the money shot that brings back a c that has been processed
+  /* editorReadKey brings back one processed character that handles
+     escape sequences for things like navigation keys
+  */
+
+  int c = editorReadKey();
+
+
+  //E.mode = 1 is vim insert mode
   if (E.mode == 1){
   switch (c) {
     case '\r':
-      editorInsertNewline();
+      editorInsertNewline(1);
       break;
 
     case '\t':
@@ -810,14 +848,16 @@ void editorProcessKeypress() {
    // below is slz testing
     case CTRL_KEY('h'):
       //editorInsertChar('*');
-      getwordundercursor(c);
+      // editorDecorateWord(c);
+      i = editorIndentAmount(E.cy);
+      editorSetStatusMessage("i = %d", i ); 
       break;
 
    // below is slz testing
     case CTRL_KEY('b'):
     case CTRL_KEY('e'):
       //editorInsertChar('*');
-      getwordundercursor(c);
+       editorDecorateWord(c);
       break;
 
     case '\x1b':
@@ -833,7 +873,7 @@ void editorProcessKeypress() {
   quit_times = KILO_QUIT_TIMES;
 
 /*************************************** 
- * This is where you enter command mode* 
+ * This is where you enter normal mode* 
  ***************************************/
 
  }  else {
@@ -891,6 +931,14 @@ void editorProcessKeypress() {
       E.multiplier = 1;
       break;
 
+    case C_dd:
+      editorDelRow(E.cy);
+      E.cy--;
+      E.cx = 0;
+      E.command[0] = '\0';
+      E.multiplier = 1;
+      break;
+
     case C_caw:
      for (int i = 0; i < E.multiplier; i++){
       editorDelWord();}
@@ -918,10 +966,8 @@ void editorProcessKeypress() {
       break;
 
     case C_o:
-      E.cy++;
       E.cx = 0;
-      editorInsertNewline();
-      E.cy--;
+      editorInsertNewline(1);
       E.mode = 1;
       E.command[0] = '\0';
       E.multiplier = 1;
@@ -929,8 +975,7 @@ void editorProcessKeypress() {
 
     case C_O:
       E.cx = 0;
-      editorInsertNewline();
-      E.cy--;
+      editorInsertNewline(0);
       E.mode = 1;
       E.command[0] = '\0';
       E.multiplier = 1;
@@ -958,6 +1003,7 @@ void editorIndentRow() {
   if (row->size == 0) return;
   E.cx = 0;
   for (int i = 0; i < 4; i++) editorInsertChar(' ');
+  E.dirty++;
 }
 
 void editorUnIndentRow() {
@@ -970,6 +1016,19 @@ void editorUnIndentRow() {
       editorDelChar();
     }
   }
+  E.dirty++;
+}
+
+int editorIndentAmount(int y) {
+  int i;
+  //erow *row = &E.row[E.cy];
+  erow *row = &E.row[y];
+  if (row->size == 0) return 0;
+
+  for ( i = 0; i < row->size; i++) {
+    if (row->chars[i] != ' ') break;}
+
+  return i;
 }
 
 void editorDelWord() {
@@ -989,6 +1048,7 @@ void editorDelWord() {
       editorMoveCursor(ARROW_RIGHT);
       editorDelChar();
   }
+  E.dirty++;
   //editorSetStatusMessage("i = %d, j = %d", i, j ); 
 }
 
@@ -998,7 +1058,7 @@ void getcharundercursor() {
   char d = row->chars[E.cx];
   editorSetStatusMessage("character under cursor: %c", d); 
 }
-void getwordundercursor(int c) {
+void editorDecorateWord(int c) {
   erow *row = &E.row[E.cy];
   if (row->chars[E.cx] < 48) return;
 
@@ -1040,6 +1100,9 @@ void getwordundercursor(int c) {
     editorDelChar();
   }
   }
+  /*below needs to move nothing to do with anything but
+    was just a place I was testing highlighting
+    */
   E.highlight[0] = E.highlight[1] = 2;
   editorSetStatusMessage("word under cursor: <%s>; start of word: %d; end of word: %d; n: %d; cursor: %d", d, i+1, j-1, n, E.cx); 
 }
@@ -1075,7 +1138,7 @@ int main(int argc, char *argv[]) {
   else {
     editorInsertRow(E.numrows, "Hello, Steve!", 13); //slz adds
     E.cx = E.row[E.cy].size; //put cursor at end of line
-    editorInsertNewline(); //slz adds 
+    editorInsertNewline(1); //slz adds 
     editorInsertRow(E.numrows, "The rain in Spain falls mainly on the plain", 43); //slz adds
     E.cy = 2; //puts cursor at end of line above
   }
