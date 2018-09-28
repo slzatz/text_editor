@@ -116,6 +116,8 @@ void editorUnIndentRow();
 int editorIndentAmount(int y);
 void editorMoveCursor(int key);
 void editorDelChar();
+int editorIsLineAllBlanks(int y); 
+void editorDeleteToEndOfLine();
 
 int keyfromstring(char *key)
 {
@@ -375,7 +377,7 @@ void editorInsertNewline(int direction) {
     editorInsertRow(E.cy + 1, &row->chars[E.cx], row->size - E.cx);
     row = &E.row[E.cy];
     row->size = E.cx;
-    row->chars[row->size] = '\0';
+    row->chars[row->size] = '\0';//wouldn't row->chars[E.cx] = 0 be better
     i = editorIndentAmount(E.cy);
     E.cy++;
     row = &E.row[E.cy];
@@ -862,6 +864,16 @@ void editorProcessKeypress() {
 
     case '\x1b':
       E.mode = 0;
+      //editorSetStatusMessage("");
+      if (editorIsLineAllBlanks(E.cy)) {
+        E.cx = 0; 
+        erow *row = &E.row[E.cy];
+        for (;;){
+          if (row->chars[0] != ' ') break;
+          editorMoveCursor(ARROW_RIGHT);
+          editorDelChar();
+      }  
+    }
       editorSetStatusMessage("");
       break;
 
@@ -921,7 +933,7 @@ void editorProcessKeypress() {
       E.command[0] = '\0';
       E.multiplier = 1;
       E.mode = 1;
-      editorSetStatusMessage("-- INSERT --");
+      editorSetStatusMessage("\x1b[1m-- INSERT --");
       break;
 
     case C_daw:
@@ -937,6 +949,10 @@ void editorProcessKeypress() {
       E.cx = 0;
       E.command[0] = '\0';
       E.multiplier = 1;
+      break;
+
+    case C_d$:
+      editorDeleteToEndOfLine();
       break;
 
     case C_caw:
@@ -985,7 +1001,7 @@ void editorProcessKeypress() {
       E.mode = 1;
       E.command[0] = '\0';
       E.multiplier = 1;
-      editorSetStatusMessage("-- INSERT --");
+      editorSetStatusMessage("\x1b[1m-- INSERT --");
       break;
 
     default:
@@ -1019,9 +1035,16 @@ void editorUnIndentRow() {
   E.dirty++;
 }
 
+int editorIsLineAllBlanks(int y) {
+  int i;
+  erow *row = &E.row[y];
+  i = editorIndentAmount(E.cy);
+  if (i == row->size ) return 1;
+  return 0;
+}
+
 int editorIndentAmount(int y) {
   int i;
-  //erow *row = &E.row[E.cy];
   erow *row = &E.row[y];
   if (row->size == 0) return 0;
 
@@ -1052,6 +1075,12 @@ void editorDelWord() {
   //editorSetStatusMessage("i = %d, j = %d", i, j ); 
 }
 
+void editorDeleteToEndOfLine() {
+  erow *row = &E.row[E.cy];
+  row->size = E.cx;
+  //row->chars[row->size] = '\0';
+  row->chars[E.cx] = '\0';
+  }
 /*** slz testing stuff ***/
 void getcharundercursor() {
   erow *row = &E.row[E.cy];
