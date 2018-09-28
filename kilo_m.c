@@ -50,7 +50,10 @@ enum Command {
   C_unindent,
   C_o,
   C_O,
-  C_c$
+  C_c$,
+  C_gg,
+  C_G,
+  C_colon
 };
 
 /*** data ***/
@@ -98,6 +101,9 @@ static t_symstruct lookuptable[] = {
   {"dd", C_dd},
   {">>", C_indent},
   {"<<", C_unindent},
+  {":", C_colon},
+  {"gg", C_gg},
+  {"G", C_G},
   {"d$", C_d$}
 };
 
@@ -105,7 +111,7 @@ static t_symstruct lookuptable[] = {
 
 /*** prototypes ***/
 
-void editorSetStatusMessage(const char *fmt, ...);
+void editorSetMessage(const char *fmt, ...);
 void editorRefreshScreen();
 char *editorPrompt(char *prompt);
 void getcharundercursor();
@@ -200,7 +206,7 @@ int editorReadKey() {
 
   if (c == '\x1b') {
     char seq[3];
-    //editorSetStatusMessage("You pressed %d", c); //slz
+    //editorSetMessage("You pressed %d", c); //slz
     // the reads time out after 0.1 seconds
     if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
     if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
@@ -209,7 +215,7 @@ int editorReadKey() {
       if (seq[1] >= '0' && seq[1] <= '9') {
         if (read(STDIN_FILENO, &seq[2], 1) != 1) return '\x1b'; //need 4 bytes
         if (seq[2] == '~') {
-          //editorSetStatusMessage("You pressed %c%c%c", seq[0], seq[1], seq[2]); //slz
+          //editorSetMessage("You pressed %c%c%c", seq[0], seq[1], seq[2]); //slz
           switch (seq[1]) {
             case '1': return HOME_KEY; //not being issued
             case '3': return DEL_KEY; //<esc>[3~
@@ -221,7 +227,7 @@ int editorReadKey() {
           }
         }
       } else {
-          //editorSetStatusMessage("You pressed %c%c", seq[0], seq[1]); //slz
+          //editorSetMessage("You pressed %c%c", seq[0], seq[1]); //slz
           switch (seq[1]) {
             case 'A': return ARROW_UP; //<esc>[A
             case 'B': return ARROW_DOWN; //<esc>[B
@@ -241,7 +247,7 @@ int editorReadKey() {
     return '\x1b'; // if it doesn't match a known escape sequence like ] ... or O ... just return escape
 
   } else {
-      //editorSetStatusMessage("You pressed %d", c); //slz
+      //editorSetMessage("You pressed %d", c); //slz
       return c;
   }
 }
@@ -461,7 +467,7 @@ void editorSave() {
   if (E.filename == NULL) {
     E.filename = editorPrompt("Save as: %s (ESC to cancel)");
     if (E.filename == NULL) {
-      editorSetStatusMessage("Save aborted");
+      editorSetMessage("Save aborted");
       return;
     }
   }
@@ -476,7 +482,7 @@ void editorSave() {
         close(fd);
         free(buf);
         E.dirty = 0;
-        editorSetStatusMessage("%d bytes written to disk", len);
+        editorSetMessage("%d bytes written to disk", len);
         return;
       }
     }
@@ -484,7 +490,7 @@ void editorSave() {
   }
 
   free(buf);
-  editorSetStatusMessage("Can't save! I/O error: %s", strerror(errno));
+  editorSetMessage("Can't save! I/O error: %s", strerror(errno));
 }
 
 /*** append buffer ***/
@@ -580,13 +586,16 @@ void editorDrawRows(struct abuf *ab) {
 
       abAppend(ab, &E.row[filerow].chars[E.coloff], len);
     
+    //"\x1b[K" erases the part of the line to the right of the cursor in case the
+    // new line i shorter than the old
 
-    abAppend(ab, "\x1b[K", 3); //erases the part of the line to the right of the cursor in case the new line is shorter than the old
+    abAppend(ab, "\x1b[K", 3); 
     }
     abAppend(ab, "\r\n", 2);
-    abAppend(ab, "\x1b[0m", 5); //slz return background to normal
+    abAppend(ab, "\x1b[0m", 4); //slz return background to normal
   }
 }
+
 //status bar has inverted colors
 void editorDrawStatusBar(struct abuf *ab) {
   abAppend(ab, "\x1b[7m", 4); //switches to inverted colors
@@ -616,7 +625,11 @@ void editorDrawStatusBar(struct abuf *ab) {
 }
 
 void editorDrawMessageBar(struct abuf *ab) {
-  /*void editorSetStatusMessage(const char *fmt, ...) is where the message is created/set*/
+  /*void editorSetMessage(const char *fmt, ...) is where the message is created/set*/
+
+  //"\x1b[K" erases the part of the line to the right of the cursor in case the
+  // new line i shorter than the old
+
   abAppend(ab, "\x1b[K", 3);
   int msglen = strlen(E.statusmsg);
   if (msglen > E.screencols) msglen = E.screencols;
@@ -650,11 +663,12 @@ void editorRefreshScreen() {
   abAppend(&ab, str, 3);*/
 
   // the lines below position the cursor where it should go
+  if (E.mode != 2){
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1,
                                             (E.cx - E.coloff) + 1);
   abAppend(&ab, buf, strlen(buf));
-
+}
   abAppend(&ab, "\x1b[?25h", 6); //shows the cursor
 
   write(STDOUT_FILENO, ab.b, ab.len);
@@ -665,13 +679,14 @@ void editorRefreshScreen() {
 from <stdio.h> and time() is from <time.h>.  stdarg.h allows functions to accept a
 variable number of arguments and are declared with an ellipsis in place of the last parameter.*/
 
-void editorSetStatusMessage(const char *fmt, ...) {
+void editorSetMessage(const char *fmt, ...) {
   va_list ap; //type for iterating arguments
   va_start(ap, fmt); // start iterating arguments with a va_list
 
 
-  // vsnprint from <stdio.h> writes to the character string str
-  //vsnprint(char *str,size_t size, const char *format, va_list ap)
+  /* vsnprint from <stdio.h> writes to the character string str
+     vsnprint(char *str,size_t size, const char *format, va_list ap)*/
+
   vsnprintf(E.statusmsg, sizeof(E.statusmsg), fmt, ap);
   va_end(ap); //free a va_list
   E.statusmsg_time = time(NULL);
@@ -687,19 +702,19 @@ char *editorPrompt(char *prompt) {
   buf[0] = '\0';
 
   while (1) {
-    editorSetStatusMessage(prompt, buf);
+    editorSetMessage(prompt, buf);
     editorRefreshScreen();
 
     int c = editorReadKey();
     if (c == DEL_KEY || c == CTRL_KEY('h') || c == BACKSPACE) {
       if (buflen != 0) buf[--buflen] = '\0';
     } else if (c == '\x1b') {
-      //editorSetStatusMessage(""); //slz
+      //editorSetMessage(""); //slz
       free(buf);
       return NULL;
     } else if (c == '\r') {
       if (buflen != 0) {
-        //editorSetStatusMessage(""); //slz
+        //editorSetMessage(""); //slz
         return buf;
       }
     // <ctype> library function void iscntrl(int c) ctrl-m is interpreted as '\r' above
@@ -763,6 +778,8 @@ void editorMoveCursor(int key) {
 void editorProcessKeypress() {
   static int quit_times = KILO_QUIT_TIMES;
   int i;
+  //char ex[10] = {':', '\0'};
+  char z[10];
 
   /* editorReadKey brings back one processed character that handles
      escape sequences for things like navigation keys
@@ -788,7 +805,7 @@ void editorProcessKeypress() {
 
     case CTRL_KEY('q'):
       if (E.dirty && quit_times > 0) {
-        editorSetStatusMessage("WARNING!!! File has unsaved changes. "
+        editorSetMessage("WARNING!!! File has unsaved changes. "
           "Press Ctrl-Q %d more times to quit.", quit_times);
         quit_times--;
         return;
@@ -852,7 +869,7 @@ void editorProcessKeypress() {
       //editorInsertChar('*');
       // editorDecorateWord(c);
       i = editorIndentAmount(E.cy);
-      editorSetStatusMessage("i = %d", i ); 
+      editorSetMessage("i = %d", i ); 
       break;
 
    // below is slz testing
@@ -864,7 +881,7 @@ void editorProcessKeypress() {
 
     case '\x1b':
       E.mode = 0;
-      //editorSetStatusMessage("");
+      //editorSetMessage("");
       if (editorIsLineAllBlanks(E.cy)) {
         E.cx = 0; 
         erow *row = &E.row[E.cy];
@@ -874,7 +891,7 @@ void editorProcessKeypress() {
           editorDelChar();
       }  
     }
-      editorSetStatusMessage("");
+      editorSetMessage("");
       break;
 
     default:
@@ -888,7 +905,7 @@ void editorProcessKeypress() {
  * This is where you enter normal mode* 
  ***************************************/
 
- }  else {
+ } else if (E.mode == 0){
  
   /*leading digit is a multiplier*/
   if (isdigit(c)) {
@@ -933,7 +950,7 @@ void editorProcessKeypress() {
       E.command[0] = '\0';
       E.multiplier = 1;
       E.mode = 1;
-      editorSetStatusMessage("\x1b[1m-- INSERT --");
+      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
       break;
 
     case C_daw:
@@ -961,6 +978,7 @@ void editorProcessKeypress() {
       E.command[0] = '\0';
       E.multiplier = 1;
       E.mode = 1;
+      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       break;
 
     case C_indent:
@@ -987,6 +1005,7 @@ void editorProcessKeypress() {
       E.mode = 1;
       E.command[0] = '\0';
       E.multiplier = 1;
+      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       break;
 
     case C_O:
@@ -995,29 +1014,122 @@ void editorProcessKeypress() {
       E.mode = 1;
       E.command[0] = '\0';
       E.multiplier = 1;
+      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       break;
 
     case C_i:
       E.mode = 1;
       E.command[0] = '\0';
       E.multiplier = 1;
-      editorSetStatusMessage("\x1b[1m-- INSERT --");
+      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       break;
+
+    case C_I:
+      E.cx = editorIndentAmount(E.cy);
+      E.mode = 1;
+      E.command[0] = '\0';
+      E.multiplier = 1;
+      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+      break;
+
+    case C_gg:
+     E.cx = 0;
+     E.cy = E.multiplier-1;
+     E.command[0] = '\0';
+     E.multiplier = 1;
+     break;
+
+    case C_G:
+     E.cx = 0;
+     E.cy = E.numrows-1;
+     E.command[0] = '\0';
+     E.multiplier = 1;
+     break;
+
+    case C_colon:
+      E.mode = 2;
+
+      // the two lines below move the cursor
+      snprintf(z, sizeof(z), "\x1b[%d;1H", E.screenrows);
+      //write(STDOUT_FILENO, z, 6);
+
+     /*write(STDOUT_FILENO, "\x1b[K", 3);
+     write(STDOUT_FILENO, ex, 1);*/
+     editorSetMessage(":"); 
+     break;
 
     default:
       break;
 
-    } //switch
-      //editorSetStatusMessage("Command is %s", &E.command); //slz
-      //if (c == 'i') E.mode = 1;
-  } //else
+    } 
+     
+  //command line mode below
+
+  } else {
+    if (c == '\x1b') {
+      E.mode = 0;
+      E.command[0] = '\0';
+      editorSetMessage(""); 
+      return;}
+
+      if (c == '\r') {
+        if (E.command[1] == 'w') {
+          if (strlen(E.command) > 3) {
+            E.filename = strdup(&E.command[3]);
+            //editorSetMessage("\"%s\" written", E.filename);
+            editorSave();
+          }
+          else editorSave();
+
+          E.mode = 0;
+          E.command[0] = '\0';
+          editorSetMessage("\"%s\" written", E.filename);
+        }
+
+        if (E.command[1] == 'x') {
+          editorSave();
+          write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+          write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
+          exit(0);
+        }
+
+        if (E.command[1] == 'q') {
+          if (E.dirty) {
+            if (strlen(E.command) == 3 && E.command[2] == '!') {
+              write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+              write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
+              exit(0);
+            }  
+            else {
+              E.mode = 0;
+              E.command[0] = '\0';
+              editorSetMessage("No write since last change");
+            }
+          }
+        
+          else {
+            write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+            write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
+            exit(0);
+          }
+        }
+    }
+
+    else {
+      int n = strlen(E.command);
+      E.command[n] = c;
+      E.command[n+1] = '\0';
+      editorSetMessage(E.command);
+    }
+  }
 }
 
 /*** slz additions ***/
 void editorIndentRow() {
   erow *row = &E.row[E.cy];
   if (row->size == 0) return;
-  E.cx = 0;
+  //E.cx = 0;
+  E.cx = editorIndentAmount(E.cy);
   for (int i = 0; i < 4; i++) editorInsertChar(' ');
   E.dirty++;
 }
@@ -1072,7 +1184,7 @@ void editorDelWord() {
       editorDelChar();
   }
   E.dirty++;
-  //editorSetStatusMessage("i = %d, j = %d", i, j ); 
+  //editorSetMessage("i = %d, j = %d", i, j ); 
 }
 
 void editorDeleteToEndOfLine() {
@@ -1085,7 +1197,7 @@ void editorDeleteToEndOfLine() {
 void getcharundercursor() {
   erow *row = &E.row[E.cy];
   char d = row->chars[E.cx];
-  editorSetStatusMessage("character under cursor: %c", d); 
+  editorSetMessage("character under cursor: %c", d); 
 }
 void editorDecorateWord(int c) {
   erow *row = &E.row[E.cy];
@@ -1133,7 +1245,7 @@ void editorDecorateWord(int c) {
     was just a place I was testing highlighting
     */
   E.highlight[0] = E.highlight[1] = 2;
-  editorSetStatusMessage("word under cursor: <%s>; start of word: %d; end of word: %d; n: %d; cursor: %d", d, i+1, j-1, n, E.cx); 
+  editorSetMessage("word under cursor: <%s>; start of word: %d; end of word: %d; n: %d; cursor: %d", d, i+1, j-1, n, E.cx); 
 }
 /*** init ***/
 
@@ -1149,7 +1261,7 @@ void initEditor() {
   E.statusmsg[0] = '\0'; // inital statusmsg is ""
   E.statusmsg_time = 0;
   E.highlight[0] = E.highlight[1] = -1;
-  E.mode = 1;
+  E.mode = 0; //0=normal; 1=insert; 2=command line
   E.command[0] = '\0';
   E.multiplier = 1;
 
@@ -1172,13 +1284,13 @@ int main(int argc, char *argv[]) {
     E.cy = 2; //puts cursor at end of line above
   }
 
-  //editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-Q = quit"); //slz commented this out
-  editorSetStatusMessage("rows: %d  cols: %d", E.screenrows, E.screencols); //this works prints rows: 43  cols: 159
+  //editorSetMessage("HELP: Ctrl-S = save | Ctrl-Q = quit"); //slz commented this out
+  editorSetMessage("rows: %d  cols: %d", E.screenrows, E.screencols); //this works prints rows: 43  cols: 159
 
   while (1) {
     editorRefreshScreen(); //screen is refreshed after every key press
     editorProcessKeypress();
-    //editorSetStatusMessage("row: %d  col: %d size: %d", E.cy, E.cx, E.row[E.cy].size); //shows row and column
+    //editorSetMessage("row: %d  col: %d size: %d", E.cy, E.cx, E.row[E.cy].size); //shows row and column
   }
   //erow *row = &E.row[E.cy];
 
