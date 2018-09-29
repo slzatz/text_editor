@@ -40,6 +40,7 @@ enum editorKey {
 enum Command {
   C_x,
   C_s,
+  C_a,
   C_i,
   C_I,
   C_caw,
@@ -53,6 +54,8 @@ enum Command {
   C_c$,
   C_gg,
   C_G,
+  C_yy,
+  C_p,
   C_colon
 };
 
@@ -82,17 +85,21 @@ struct editorConfig {
   struct termios orig_termios;
   int highlight[2];
   int mode;
-  char command[7];
+  char command[20]; //needs to accomodate file names
   int multiplier;
 };
 
 struct editorConfig E;
+
+//erow *buffer[20] = { NULL };
+char *buffer[20] = {NULL};
 
 typedef struct { char *key; int val; } t_symstruct;
 static t_symstruct lookuptable[] = {
   {"x", C_x},
   {"s", C_s},
   {"i", C_i},
+  {"a", C_a},
   {"I", C_I},
   {"O", C_O},
   {"o", C_o},
@@ -104,6 +111,8 @@ static t_symstruct lookuptable[] = {
   {":", C_colon},
   {"gg", C_gg},
   {"G", C_G},
+  {"yy", C_yy},
+  {"p", C_p},
   {"d$", C_d$}
 };
 
@@ -113,7 +122,7 @@ static t_symstruct lookuptable[] = {
 
 void editorSetMessage(const char *fmt, ...);
 void editorRefreshScreen();
-char *editorPrompt(char *prompt);
+//char *editorPrompt(char *prompt);
 void getcharundercursor();
 void editorDecorateWord(int c);
 void editorDelWord();
@@ -124,6 +133,8 @@ void editorMoveCursor(int key);
 void editorDelChar();
 int editorIsLineAllBlanks(int y); 
 void editorDeleteToEndOfLine();
+void editorYank(int n);
+void editorPaste();
 
 int keyfromstring(char *key)
 {
@@ -464,14 +475,15 @@ void editorOpen(char *filename) {
 }
 
 void editorSave() {
-  if (E.filename == NULL) {
+  /*if (E.filename == NULL) {
     E.filename = editorPrompt("Save as: %s (ESC to cancel)");
     if (E.filename == NULL) {
       editorSetMessage("Save aborted");
       return;
     }
-  }
+  }*/
 
+  if (E.filename == NULL) return;
   int len;
   char *buf = editorRowsToString(&len);
 
@@ -566,7 +578,8 @@ void editorDrawRows(struct abuf *ab) {
         while (padding--) abAppend(ab, " ", 1);
         abAppend(ab, welcome, welcomelen);
       } else {
-        abAppend(ab, "~", 1);
+        //abAppend(ab, "~", 1); slz change 09-29-2018
+        abAppend(ab, "~\x1b[K", 4); 
       }
     } else {
       int len = E.row[filerow].size - E.coloff;
@@ -694,6 +707,10 @@ void editorSetMessage(const char *fmt, ...) {
 
 /*** input ***/
 
+/*
+
+editorPrompt has some interesting code about buffers, keys, backspaces but not in use
+
 char *editorPrompt(char *prompt) {
   size_t bufsize = 128;
   char *buf = malloc(bufsize);
@@ -728,6 +745,7 @@ char *editorPrompt(char *prompt) {
     }
   }
 }
+*/
 
 void editorMoveCursor(int key) {
   //erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy]; //orig
@@ -737,6 +755,7 @@ void editorMoveCursor(int key) {
 
   switch (key) {
     case ARROW_LEFT:
+    case 'h':
       if (E.cx != 0) {
         E.cx--;
       } else if (E.cy > 0) {
@@ -745,6 +764,7 @@ void editorMoveCursor(int key) {
       }
       break;
     case ARROW_RIGHT:
+    case 'l':
       //if (row && E.cx < row->size) { //original
       if (E.cx < row->size) {
         E.cx++;
@@ -757,11 +777,13 @@ void editorMoveCursor(int key) {
      }
       break;
     case ARROW_UP:
+    case 'k':
       if (E.cy != 0) {
         E.cy--;
       }
       break;
     case ARROW_DOWN:
+    case 'j':
       if (E.cy < E.numrows-1) { //slz change added -1
         E.cy++;
       }
@@ -779,7 +801,7 @@ void editorProcessKeypress() {
   static int quit_times = KILO_QUIT_TIMES;
   int i;
   //char ex[10] = {':', '\0'};
-  char z[10];
+  //char z[10];
 
   /* editorReadKey brings back one processed character that handles
      escape sequences for things like navigation keys
@@ -875,13 +897,12 @@ void editorProcessKeypress() {
    // below is slz testing
     case CTRL_KEY('b'):
     case CTRL_KEY('e'):
-      //editorInsertChar('*');
        editorDecorateWord(c);
-      break;
+       break;
 
     case '\x1b':
       E.mode = 0;
-      //editorSetMessage("");
+      if (E.cx > 0) E.cx--;
       if (editorIsLineAllBlanks(E.cy)) {
         E.cx = 0; 
         erow *row = &E.row[E.cy];
@@ -918,6 +939,10 @@ void editorProcessKeypress() {
     case ARROW_DOWN:
     case ARROW_LEFT:
     case ARROW_RIGHT:
+    case 'h':
+    case 'j':
+    case 'k':
+    case 'l':
       editorMoveCursor(c);
       E.command[0] = '\0'; //untested but I believe arrow should reset command
       return;
@@ -961,6 +986,7 @@ void editorProcessKeypress() {
       break;
 
     case C_dd:
+      editorYank(1);
       editorDelRow(E.cy);
       E.cy--;
       E.cx = 0;
@@ -1024,6 +1050,14 @@ void editorProcessKeypress() {
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       break;
 
+    case C_a:
+      editorMoveCursor(ARROW_RIGHT);
+      E.mode = 1;
+      E.command[0] = '\0';
+      E.multiplier = 1;
+      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+      break;
+
     case C_I:
       E.cx = editorIndentAmount(E.cy);
       E.mode = 1;
@@ -1046,11 +1080,23 @@ void editorProcessKeypress() {
      E.multiplier = 1;
      break;
 
+   case C_yy:  
+     editorYank(E.multiplier);
+     E.command[0] = '\0';
+     E.multiplier = 1;
+     break;
+  
+   case C_p:  
+     editorPaste();
+     E.command[0] = '\0';
+     E.multiplier = 1;
+     break;
+
     case C_colon:
       E.mode = 2;
 
       // the two lines below move the cursor
-      snprintf(z, sizeof(z), "\x1b[%d;1H", E.screenrows);
+      //snprintf(z, sizeof(z), "\x1b[%d;1H", E.screenrows);
       //write(STDOUT_FILENO, z, 6);
 
      /*write(STDOUT_FILENO, "\x1b[K", 3);
@@ -1133,14 +1179,42 @@ void editorProcessKeypress() {
 
     else {
       int n = strlen(E.command);
-      E.command[n] = c;
-      E.command[n+1] = '\0';
+      if (c == DEL_KEY || c == BACKSPACE) {
+        E.command[n-1] = '\0';
+      } else {
+        E.command[n] = c;
+        E.command[n+1] = '\0';
+      }
       editorSetMessage(E.command);
     }
   }
 }
 
 /*** slz additions ***/
+
+void editorYank(int n){
+  for (int i=0; i < 10; i++) {
+    free(buffer[i]);
+    buffer[i] = NULL;
+    }
+  for (int i=0; i < n; i++) {
+    int len = E.row[E.cy+i].size;
+    buffer[i] = malloc(len + 1);
+    memcpy(buffer[i], E.row[E.cy+i].chars, len);
+    buffer[i][len] = '\0';
+  }
+}
+
+void editorPaste(){
+  for (int i=0; i < 10; i++) {
+    if (buffer[i] == NULL) break;
+
+    int len = strlen(buffer[i]);
+    E.cy++;
+    editorInsertRow(E.cy, buffer[i], len);
+  }
+}
+
 void editorIndentRow() {
   erow *row = &E.row[E.cy];
   if (row->size == 0) return;
@@ -1297,6 +1371,7 @@ int main(int argc, char *argv[]) {
     E.cx = E.row[E.cy].size; //put cursor at end of line
     editorInsertNewline(1); //slz adds 
     editorInsertRow(E.numrows, "The rain in Spain falls mainly on the plain", 43); //slz adds
+    editorInsertRow(E.numrows, "abc def ghi", 11); //slz adds
     E.cy = 2; //puts cursor at end of line above
   }
 
