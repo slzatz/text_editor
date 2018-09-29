@@ -1076,21 +1076,37 @@ void editorProcessKeypress() {
         if (E.command[1] == 'w') {
           if (strlen(E.command) > 3) {
             E.filename = strdup(&E.command[3]);
-            //editorSetMessage("\"%s\" written", E.filename);
             editorSave();
+            editorSetMessage("\"%s\" written", E.filename);
           }
-          else editorSave();
+          else if (E.filename != NULL) {
+              editorSave();
+              editorSetMessage("\"%s\" written", E.filename);
+          }
+          else editorSetMessage("No file name");
 
           E.mode = 0;
           E.command[0] = '\0';
-          editorSetMessage("\"%s\" written", E.filename);
         }
 
         if (E.command[1] == 'x') {
-          editorSave();
-          write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-          write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
-          exit(0);
+          if (strlen(E.command) > 3) {
+            E.filename = strdup(&E.command[3]);
+            editorSave();
+            write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+            write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
+            exit(0);
+          }
+          else if (E.filename != NULL) {
+            editorSave();
+            write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+            write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
+            exit(0);
+          }
+          else editorSetMessage("No file name");
+
+          E.mode = 0;
+          E.command[0] = '\0';
         }
 
         if (E.command[1] == 'q') {
