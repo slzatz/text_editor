@@ -86,7 +86,7 @@ struct editorConfig {
   int highlight[2];
   int mode;
   char command[20]; //needs to accomodate file names
-  int multiplier;
+  int repeat;
 };
 
 struct editorConfig E;
@@ -333,6 +333,7 @@ void editorDelRow(int at) {
   editorFreeRow(&E.row[at]);
   memmove(&E.row[at], &E.row[at + 1], sizeof(erow) * (E.numrows - at - 1));
   E.numrows--;
+  if (E.cy == E.numrows) E.cy--; 
   E.dirty++;
 }
 
@@ -578,14 +579,16 @@ void editorDrawRows(struct abuf *ab) {
       /*slz addition that checks to see if a row should
         be highlighted -- not sure this will ever be
         used but would be necessary if I introduce
-        a limited version of vim visual mode
+        a limited version of vim visual mode*/
         
 
+      if (E.mode == 3) {
       if (filerow >= E.highlight[0] && filerow <= E.highlight[1]) {
           //abAppend(ab, "\x1b[47m", 5);
           abAppend(ab, "\x1b[48;5;242m", 11);
           }
-       */
+          }
+       
 
       abAppend(ab, &E.row[filerow].chars[E.coloff], len);
     
@@ -921,7 +924,7 @@ void editorProcessKeypress() {
  
   /*leading digit is a multiplier*/
   if (isdigit(c)) {
-    E.multiplier = c - 48;
+    E.repeat = c - 48;
     return;}
 
   switch (c) {
@@ -929,34 +932,34 @@ void editorProcessKeypress() {
     case 'i':
       E.mode = 1;
       E.command[0] = '\0';
-      E.multiplier = 1;
+      E.repeat = 1;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       return;
 
     case 's':
-     for (int i = 0; i < E.multiplier; i++){
+     for (int i = 0; i < E.repeat; i++){
       editorMoveCursor(ARROW_RIGHT);
       editorDelChar();}
       E.command[0] = '\0';
-      E.multiplier = 1;
+      E.repeat = 1;
       E.mode = 1;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
       return;
 
     case 'x':
-     for (int i = 0; i < E.multiplier; i++){
+     for (int i = 0; i < E.repeat; i++){
       // BACKSPACE doesn't require cursor move by DEL;x;s do
       editorMoveCursor(ARROW_RIGHT);
       editorDelChar();}
       E.command[0] = '\0';
-      E.multiplier = 1;
+      E.repeat = 1;
       return;
     
     case 'a':
       editorMoveCursor(ARROW_RIGHT);
       E.mode = 1;
       E.command[0] = '\0';
-      E.multiplier = 1;
+      E.repeat = 1;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       return;
 
@@ -964,7 +967,7 @@ void editorProcessKeypress() {
       E.cx = editorIndentAmount(E.cy);
       E.mode = 1;
       E.command[0] = '\0';
-      E.multiplier = 1;
+      E.repeat = 1;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       return;
 
@@ -973,7 +976,7 @@ void editorProcessKeypress() {
       editorInsertNewline(1);
       E.mode = 1;
       E.command[0] = '\0';
-      E.multiplier = 1;
+      E.repeat = 1;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       return;
 
@@ -982,7 +985,7 @@ void editorProcessKeypress() {
       editorInsertNewline(0);
       E.mode = 1;
       E.command[0] = '\0';
-      E.multiplier = 1;
+      E.repeat = 1;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       return;
 
@@ -990,7 +993,7 @@ void editorProcessKeypress() {
      E.cx = 0;
      E.cy = E.numrows-1;
      E.command[0] = '\0';
-     E.multiplier = 1;
+     E.repeat = 1;
      return;
 
     case ':':
@@ -1007,6 +1010,14 @@ void editorProcessKeypress() {
      E.command[1] = '\0';
      editorSetMessage(":"); 
      return;
+
+    case 'V':
+      E.mode = 3;
+      E.command[0] = '\0';
+      E.repeat = 1;
+      E.highlight[0] = E.highlight[1] = E.cy;
+      editorSetMessage("\x1b[1m-- VISUAL LINE --\x1b[0m");
+      return;
 
     case CTRL_KEY('b'):
     case CTRL_KEY('e'):
@@ -1031,6 +1042,10 @@ void editorProcessKeypress() {
       return;
   }
 
+  // don't want a default case just want it to fall through
+  // if it doesn't match switch above
+  // presumption is it's a multicharacter command
+
   int n = strlen(E.command);
   E.command[n] = c;
   E.command[n+1] = '\0';
@@ -1038,20 +1053,18 @@ void editorProcessKeypress() {
   switch (keyfromstring(E.command)) {
     
     case C_daw:
-     for (int i = 0; i < E.multiplier; i++){
+     for (int i = 0; i < E.repeat; i++){
       editorDelWord();}
       E.command[0] = '\0';
-      E.multiplier = 1;
+      E.repeat = 1;
       break;
 
     case C_dd:
       editorYank(1);
       editorDelRow(E.cy);
-      if (E.cy > 0) E.cy--;
-      //E.cy--;
       E.cx = 0;
       E.command[0] = '\0';
-      E.multiplier = 1;
+      E.repeat = 1;
       break;
 
     case C_d$:
@@ -1059,30 +1072,30 @@ void editorProcessKeypress() {
       break;
 
     case C_caw:
-     for (int i = 0; i < E.multiplier; i++){
+     for (int i = 0; i < E.repeat; i++){
       editorDelWord();}
       E.command[0] = '\0';
-      E.multiplier = 1;
+      E.repeat = 1;
       E.mode = 1;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       break;
 
     case C_indent:
-      for ( i = 0; i < E.multiplier; i++ ) {
+      for ( i = 0; i < E.repeat; i++ ) {
         editorIndentRow();
         E.cy++;}
       E.cy-=i;
       E.command[0] = '\0';
-      E.multiplier = 1;
+      E.repeat = 1;
       break;
 
     case C_unindent:
-      for ( i = 0; i < E.multiplier; i++ ) {
+      for ( i = 0; i < E.repeat; i++ ) {
         editorUnIndentRow();
         E.cy++;}
       E.cy-=i;
       E.command[0] = '\0';
-      E.multiplier = 1;
+      E.repeat = 1;
       break;
 
 /*
@@ -1091,7 +1104,7 @@ void editorProcessKeypress() {
       editorInsertNewline(1);
       E.mode = 1;
       E.command[0] = '\0';
-      E.multiplier = 1;
+      E.repeat = 1;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       break;
 
@@ -1100,41 +1113,41 @@ void editorProcessKeypress() {
       editorInsertNewline(0);
       E.mode = 1;
       E.command[0] = '\0';
-      E.multiplier = 1;
+      E.repeat = 1;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       break;
 
     case C_i:
       E.mode = 1;
       E.command[0] = '\0';
-      E.multiplier = 1;
+      E.repeat = 1;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       break;
 
     case C_s:
-     for (int i = 0; i < E.multiplier; i++){
+     for (int i = 0; i < E.repeat; i++){
       editorMoveCursor(ARROW_RIGHT);
       editorDelChar();}
       E.command[0] = '\0';
-      E.multiplier = 1;
+      E.repeat = 1;
       E.mode = 1;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
       break;
 
     case C_x:
-     for (int i = 0; i < E.multiplier; i++){
+     for (int i = 0; i < E.repeat; i++){
       // BACKSPACE doesn't require cursor move by DEL;x;s do
       editorMoveCursor(ARROW_RIGHT);
       editorDelChar();}
       E.command[0] = '\0';
-      E.multiplier = 1;
+      E.repeat = 1;
       break;
 
     case C_a:
       editorMoveCursor(ARROW_RIGHT);
       E.mode = 1;
       E.command[0] = '\0';
-      E.multiplier = 1;
+      E.repeat = 1;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       break;
 
@@ -1142,37 +1155,37 @@ void editorProcessKeypress() {
       E.cx = editorIndentAmount(E.cy);
       E.mode = 1;
       E.command[0] = '\0';
-      E.multiplier = 1;
+      E.repeat = 1;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       break;
 */
 
     case C_gg:
      E.cx = 0;
-     E.cy = E.multiplier-1;
+     E.cy = E.repeat-1;
      E.command[0] = '\0';
-     E.multiplier = 1;
+     E.repeat = 1;
      return;
 /*
     case C_G:
      E.cx = 0;
      E.cy = E.numrows-1;
      E.command[0] = '\0';
-     E.multiplier = 1;
+     E.repeat = 1;
      return;
 */
 
    case C_yy:  
-     editorYank(E.multiplier);
+     editorYank(E.repeat);
      E.command[0] = '\0';
-     E.multiplier = 1;
+     E.repeat = 1;
      return;
 
    // leaving because have to think about "#p
    case C_p:  
      editorPaste();
      E.command[0] = '\0';
-     E.multiplier = 1;
+     E.repeat = 1;
      return;
 
     //case C_colon:
@@ -1200,7 +1213,7 @@ void editorProcessKeypress() {
    *command line mode below E.mode = 2*
    ************************************/
 
-  } else if (E.mode = 2) {
+  } else if (E.mode == 2) {
 
     if (c == '\x1b') {
       E.mode = 0;
@@ -1276,6 +1289,59 @@ void editorProcessKeypress() {
         E.command[n+1] = '\0';
       }
       editorSetMessage(E.command);
+    }
+  /********************************************
+   * visual line mode E.mode = 3
+   ********************************************/
+
+  } else {
+
+
+    switch (c) {
+
+    case ARROW_UP:
+    case ARROW_DOWN:
+    case ARROW_LEFT:
+    case ARROW_RIGHT:
+    case 'h':
+    case 'j':
+    case 'k':
+    case 'l':
+      editorMoveCursor(c);
+      E.highlight[1] = E.cy;
+      //E.command[0] = '\0'; //untested but I believe arrow should reset command
+      return;
+
+    case 'x':
+      E.repeat = E.highlight[1] - E.highlight[0] + 1;
+      E.cy = E.highlight[0];
+      editorYank(E.repeat);
+
+      for (int i = 0; i < E.repeat; i++) editorDelRow(E.cy);
+      
+      E.cx = 0;
+      E.command[0] = '\0';
+      E.repeat = 1;
+      E.mode = 0;
+      editorSetMessage("");
+      return;
+
+    case 'y':  
+      E.repeat = E.highlight[1] - E.highlight[0] + 1;
+      E.cy = E.highlight[0];
+      editorYank(E.repeat);
+      E.command[0] = '\0';
+      E.repeat = 1;
+      E.mode = 0;
+      editorSetMessage("");
+      return;
+
+    case '\x1b':
+      E.mode = 0;
+      E.command[0] = '\0';
+      E.repeat = 1;
+      editorSetMessage("");
+      return;
     }
   }
 }
@@ -1424,7 +1490,7 @@ void editorDecorateWord(int c) {
   /*below needs to move nothing to do with anything but
     was just a place I was testing highlighting
     */
-  E.highlight[0] = E.highlight[1] = 2;
+  //E.highlight[0] = E.highlight[1] = 2;
   editorSetMessage("word under cursor: <%s>; start of word: %d; end of word: %d; n: %d; cursor: %d", d, i+1, j-1, n, E.cx); 
 }
 /*** init ***/
@@ -1443,7 +1509,7 @@ void initEditor() {
   E.highlight[0] = E.highlight[1] = -1;
   E.mode = 0; //0=normal; 1=insert; 2=command line
   E.command[0] = '\0';
-  E.multiplier = 1;
+  E.repeat = 1; //number of times to repeat commands like x,s,yy also used for visual line mode x,y
 
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
   E.screenrows -= 2;
