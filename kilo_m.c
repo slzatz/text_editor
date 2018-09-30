@@ -38,25 +38,25 @@ enum editorKey {
 };
 
 enum Command {
-  C_x,
-  C_s,
-  C_a,
-  C_i,
-  C_I,
+  //C_x,
+  //C_s,
+  //C_a,
+  //C_i,
+  //C_I,
   C_caw,
   C_daw,
   C_d$,
   C_dd,
   C_indent,
   C_unindent,
-  C_o,
-  C_O,
+  //C_o,
+  //C_O,
   C_c$,
   C_gg,
-  C_G,
+  //C_G,
   C_yy,
   C_p,
-  C_colon
+  //C_colon
 };
 
 /*** data ***/
@@ -127,6 +127,7 @@ void editorRefreshScreen();
 //char *editorPrompt(char *prompt);
 void getcharundercursor();
 void editorDecorateWord(int c);
+void editorDecorateVisual(int c);
 void editorDelWord();
 void editorIndentRow();
 void editorUnIndentRow();
@@ -575,22 +576,18 @@ void editorDrawRows(struct abuf *ab) {
       if (len < 0) len = 0;
       if (len > E.screencols) len = E.screencols;
       
-
-      /*slz addition that checks to see if a row should
-        be highlighted -- not sure this will ever be
-        used but would be necessary if I introduce
-        a limited version of vim visual mode*/
-        
-
-      if (E.mode == 3) {
-      if (filerow >= E.highlight[0] && filerow <= E.highlight[1]) {
-          //abAppend(ab, "\x1b[47m", 5);
+      if (E.mode == 3 && filerow >= E.highlight[0] && filerow <= E.highlight[1]) {
           abAppend(ab, "\x1b[48;5;242m", 11);
-          }
-          }
-       
-
-      abAppend(ab, &E.row[filerow].chars[E.coloff], len);
+          abAppend(ab, &E.row[filerow].chars[E.coloff], len);
+        
+      } else if (E.mode == 4 && filerow == E.cy) {
+          abAppend(ab, &E.row[filerow].chars[0], E.highlight[0]);
+          abAppend(ab, "\x1b[48;5;242m", 11);
+          abAppend(ab, &E.row[filerow].chars[E.highlight[0]], E.highlight[1]-E.highlight[0]);
+          abAppend(ab, "\x1b[0m", 4); //slz return background to normal
+          abAppend(ab, &E.row[filerow].chars[E.highlight[1]], len - E.highlight[1]);
+        
+      } else abAppend(ab, &E.row[filerow].chars[E.coloff], len);
     
     //"\x1b[K" erases the part of the line to the right of the cursor in case the
     // new line i shorter than the old
@@ -1019,6 +1016,14 @@ void editorProcessKeypress() {
       editorSetMessage("\x1b[1m-- VISUAL LINE --\x1b[0m");
       return;
 
+    case 'v':
+      E.mode = 4;
+      E.command[0] = '\0';
+      E.repeat = 1;
+      E.highlight[0] = E.highlight[1] = E.cx;
+      editorSetMessage("\x1b[1m-- VISUAL --\x1b[0m");
+      return;
+
     case CTRL_KEY('b'):
     case CTRL_KEY('e'):
       editorDecorateWord(c);
@@ -1294,7 +1299,7 @@ void editorProcessKeypress() {
    * visual line mode E.mode = 3
    ********************************************/
 
-  } else {
+  } else if (E.mode == 3) {
 
 
     switch (c) {
@@ -1330,6 +1335,94 @@ void editorProcessKeypress() {
       E.repeat = E.highlight[1] - E.highlight[0] + 1;
       E.cy = E.highlight[0];
       editorYank(E.repeat);
+      E.command[0] = '\0';
+      E.repeat = 1;
+      E.mode = 0;
+      editorSetMessage("");
+      return;
+
+    case '>':
+      E.repeat = E.highlight[1] - E.highlight[0] + 1;
+      E.cy = E.highlight[0];
+      for ( i = 0; i < E.repeat; i++ ) {
+        editorIndentRow();
+        E.cy++;}
+      E.cy-=i;
+      E.command[0] = '\0';
+      E.repeat = 1;
+      E.mode = 0;
+      editorSetMessage("");
+      return;
+
+    case '<':
+      E.repeat = E.highlight[1] - E.highlight[0] + 1;
+      E.cy = E.highlight[0];
+      for ( i = 0; i < E.repeat; i++ ) {
+        editorUnIndentRow();
+        E.cy++;}
+      E.cy-=i;
+      E.command[0] = '\0';
+      E.repeat = 1;
+      E.mode = 0;
+      editorSetMessage("");
+      return;
+
+    case '\x1b':
+      E.mode = 0;
+      E.command[0] = '\0';
+      E.repeat = 1;
+      editorSetMessage("");
+      return;
+    }
+
+  } else if (E.mode == 4) {
+
+
+    switch (c) {
+
+    case ARROW_UP:
+    case ARROW_DOWN:
+    case ARROW_LEFT:
+    case ARROW_RIGHT:
+    case 'h':
+    case 'j':
+    case 'k':
+    case 'l':
+      editorMoveCursor(c);
+      E.highlight[1] = E.cx;
+      //E.command[0] = '\0'; //untested but I believe arrow should reset command
+      return;
+
+    case 'x':
+      E.repeat = E.highlight[1] - E.highlight[0] + 1;
+      E.cx = E.highlight[0];
+      //editorYankVisual();
+
+      for (int i = 0; i < E.repeat; i++) {
+        editorMoveCursor(ARROW_RIGHT);
+        editorDelChar(E.cx);
+      }
+
+      //E.cx = 0;
+      E.command[0] = '\0';
+      E.repeat = 1;
+      E.mode = 0;
+      editorSetMessage("");
+      return;
+
+    case 'y':  
+      E.repeat = E.highlight[1] - E.highlight[0] + 1;
+      E.cx = E.highlight[0];
+      //editorYankVisual();
+      E.command[0] = '\0';
+      E.repeat = 1;
+      E.mode = 0;
+      editorSetMessage("");
+      return;
+
+    case CTRL_KEY('b'):
+    case CTRL_KEY('e'):
+      editorDecorateVisual(c);
       E.command[0] = '\0';
       E.repeat = 1;
       E.mode = 0;
@@ -1445,6 +1538,7 @@ void getcharundercursor() {
   char d = row->chars[E.cx];
   editorSetMessage("character under cursor: %c", d); 
 }
+
 void editorDecorateWord(int c) {
   erow *row = &E.row[E.cy];
   if (row->chars[E.cx] < 48) return;
@@ -1453,45 +1547,63 @@ void editorDecorateWord(int c) {
   int i,j,n,x;
   for (i = E.cx - 1; i > -1; i--){
     if (row->chars[i] < 48) break;
-    }
- for (j = E.cx + 1; j < row->size ; j++) {
+  }
+
+  for (j = E.cx + 1; j < row->size ; j++) {
     if (row->chars[j] < 48) break;
   }
+
   for (x = i + 1, n = 0; x < j; x++, n++) {
       d[n] = row->chars[x];
   }
+
   d[n] = '\0';
   
   if (row->chars[i] != '*'){
-  E.cx = i + 1;
-  editorInsertChar('*');
-  E.cx = j + 1;
-  editorInsertChar('*');
-
-  if (c == CTRL_KEY('b')) {
     E.cx = i + 1;
     editorInsertChar('*');
-    E.cx = j + 2;
+    E.cx = j + 1;
     editorInsertChar('*');
-  }
-  } else {
-  E.cx = i+1;
-  editorDelChar();
-  E.cx = j;
-  editorDelChar();
 
-  if (c == CTRL_KEY('b')) {
-    E.cx = i;
+    if (c == CTRL_KEY('b')) {
+      E.cx = i + 1;
+      editorInsertChar('*');
+      E.cx = j + 2;
+      editorInsertChar('*');
+    }
+  } else {
+    E.cx = i+1;
     editorDelChar();
-    E.cx = j-1;
+    E.cx = j;
     editorDelChar();
-  }
+
+    if (c == CTRL_KEY('b')) {
+      E.cx = i;
+      editorDelChar();
+      E.cx = j-1;
+      editorDelChar();
+    }
   }
   /*below needs to move nothing to do with anything but
     was just a place I was testing highlighting
     */
   //E.highlight[0] = E.highlight[1] = 2;
   editorSetMessage("word under cursor: <%s>; start of word: %d; end of word: %d; n: %d; cursor: %d", d, i+1, j-1, n, E.cx); 
+}
+
+void editorDecorateVisual(int c) {
+  E.cx = E.highlight[0];
+  if (c == CTRL_KEY('b')) {
+    editorInsertChar('*');
+    editorInsertChar('*');
+    E.cx = E.highlight[1]+3;
+    editorInsertChar('*');
+    editorInsertChar('*');
+  } else {
+    editorInsertChar('*');
+    E.cx = E.highlight[1]+2;
+    editorInsertChar('*');
+  }
 }
 /*** init ***/
 
