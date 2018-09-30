@@ -96,6 +96,7 @@ char *buffer[20] = {NULL};
 
 typedef struct { char *key; int val; } t_symstruct;
 static t_symstruct lookuptable[] = {
+/*  
   {"x", C_x},
   {"s", C_s},
   {"i", C_i},
@@ -103,14 +104,15 @@ static t_symstruct lookuptable[] = {
   {"I", C_I},
   {"O", C_O},
   {"o", C_o},
+*/
   {"caw", C_caw},
   {"daw", C_daw},
   {"dd", C_dd},
   {">>", C_indent},
   {"<<", C_unindent},
-  {":", C_colon},
+//  {":", C_colon},
   {"gg", C_gg},
-  {"G", C_G},
+//  {"G", C_G},
   {"yy", C_yy},
   {"p", C_p},
   {"d$", C_d$}
@@ -798,8 +800,13 @@ void editorProcessKeypress() {
   int c = editorReadKey();
 
 
-  //E.mode = 1 is vim insert mode
+/*************************************** 
+ * This is where you enter insert mode* 
+ * E.mode = 1
+ ***************************************/
+
   if (E.mode == 1){
+
   switch (c) {
     case '\r':
       editorInsertNewline(1);
@@ -870,10 +877,6 @@ void editorProcessKeypress() {
       editorMoveCursor(c);
       break;
 
-    //case CTRL_KEY('l'):
-    //case '\x1b':
-    //  break;
-
    // below is slz testing
     case CTRL_KEY('h'):
       //editorInsertChar('*');
@@ -882,11 +885,10 @@ void editorProcessKeypress() {
       editorSetMessage("i = %d", i ); 
       break;
 
-   // below is slz testing
     case CTRL_KEY('b'):
     case CTRL_KEY('e'):
-       editorDecorateWord(c);
-       break;
+      editorDecorateWord(c);
+      break;
 
     case '\x1b':
       E.mode = 0;
@@ -912,6 +914,7 @@ void editorProcessKeypress() {
 
 /*************************************** 
  * This is where you enter normal mode* 
+ * E.mode = 0
  ***************************************/
 
  } else if (E.mode == 0){
@@ -922,6 +925,93 @@ void editorProcessKeypress() {
     return;}
 
   switch (c) {
+
+    case 'i':
+      E.mode = 1;
+      E.command[0] = '\0';
+      E.multiplier = 1;
+      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+      return;
+
+    case 's':
+     for (int i = 0; i < E.multiplier; i++){
+      editorMoveCursor(ARROW_RIGHT);
+      editorDelChar();}
+      E.command[0] = '\0';
+      E.multiplier = 1;
+      E.mode = 1;
+      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
+      return;
+
+    case 'x':
+     for (int i = 0; i < E.multiplier; i++){
+      // BACKSPACE doesn't require cursor move by DEL;x;s do
+      editorMoveCursor(ARROW_RIGHT);
+      editorDelChar();}
+      E.command[0] = '\0';
+      E.multiplier = 1;
+      return;
+    
+    case 'a':
+      editorMoveCursor(ARROW_RIGHT);
+      E.mode = 1;
+      E.command[0] = '\0';
+      E.multiplier = 1;
+      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+      return;
+
+    case 'I':
+      E.cx = editorIndentAmount(E.cy);
+      E.mode = 1;
+      E.command[0] = '\0';
+      E.multiplier = 1;
+      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+      return;
+
+    case 'o':
+      E.cx = 0;
+      editorInsertNewline(1);
+      E.mode = 1;
+      E.command[0] = '\0';
+      E.multiplier = 1;
+      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+      return;
+
+    case 'O':
+      E.cx = 0;
+      editorInsertNewline(0);
+      E.mode = 1;
+      E.command[0] = '\0';
+      E.multiplier = 1;
+      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+      return;
+
+    case 'G':
+     E.cx = 0;
+     E.cy = E.numrows-1;
+     E.command[0] = '\0';
+     E.multiplier = 1;
+     return;
+
+    case ':':
+      E.mode = 2;
+
+  /* the two lines below move the cursor
+     snprintf(z, sizeof(z), "\x1b[%d;1H", E.screenrows);
+     write(STDOUT_FILENO, z, 6);
+
+     write(STDOUT_FILENO, "\x1b[K", 3);
+     write(STDOUT_FILENO, ex, 1);*/
+
+     E.command[0] = ':';
+     E.command[1] = '\0';
+     editorSetMessage(":"); 
+     return;
+
+    case CTRL_KEY('b'):
+    case CTRL_KEY('e'):
+      editorDecorateWord(c);
+      return;
 
     case ARROW_UP:
     case ARROW_DOWN:
@@ -946,26 +1036,7 @@ void editorProcessKeypress() {
   E.command[n+1] = '\0';
 
   switch (keyfromstring(E.command)) {
-     //case 'x':
-    case C_x:
-     for (int i = 0; i < E.multiplier; i++){
-      // BACKSPACE doesn't require cursor move by DEL;x;s do
-      editorMoveCursor(ARROW_RIGHT);
-      editorDelChar();}
-      E.command[0] = '\0';
-      E.multiplier = 1;
-      break;
     
-    case C_s:
-     for (int i = 0; i < E.multiplier; i++){
-      editorMoveCursor(ARROW_RIGHT);
-      editorDelChar();}
-      E.command[0] = '\0';
-      E.multiplier = 1;
-      E.mode = 1;
-      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
-      break;
-
     case C_daw:
      for (int i = 0; i < E.multiplier; i++){
       editorDelWord();}
@@ -1014,6 +1085,7 @@ void editorProcessKeypress() {
       E.multiplier = 1;
       break;
 
+/*
     case C_o:
       E.cx = 0;
       editorInsertNewline(1);
@@ -1039,6 +1111,25 @@ void editorProcessKeypress() {
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       break;
 
+    case C_s:
+     for (int i = 0; i < E.multiplier; i++){
+      editorMoveCursor(ARROW_RIGHT);
+      editorDelChar();}
+      E.command[0] = '\0';
+      E.multiplier = 1;
+      E.mode = 1;
+      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
+      break;
+
+    case C_x:
+     for (int i = 0; i < E.multiplier; i++){
+      // BACKSPACE doesn't require cursor move by DEL;x;s do
+      editorMoveCursor(ARROW_RIGHT);
+      editorDelChar();}
+      E.command[0] = '\0';
+      E.multiplier = 1;
+      break;
+
     case C_a:
       editorMoveCursor(ARROW_RIGHT);
       E.mode = 1;
@@ -1054,53 +1145,63 @@ void editorProcessKeypress() {
       E.multiplier = 1;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       break;
+*/
 
     case C_gg:
      E.cx = 0;
      E.cy = E.multiplier-1;
      E.command[0] = '\0';
      E.multiplier = 1;
-     break;
-
+     return;
+/*
     case C_G:
      E.cx = 0;
      E.cy = E.numrows-1;
      E.command[0] = '\0';
      E.multiplier = 1;
-     break;
+     return;
+*/
 
    case C_yy:  
      editorYank(E.multiplier);
      E.command[0] = '\0';
      E.multiplier = 1;
-     break;
-  
+     return;
+
+   // leaving because have to think about "#p
    case C_p:  
      editorPaste();
      E.command[0] = '\0';
      E.multiplier = 1;
-     break;
+     return;
 
-    case C_colon:
-      E.mode = 2;
+    //case C_colon:
 
-      // the two lines below move the cursor
-      //snprintf(z, sizeof(z), "\x1b[%d;1H", E.screenrows);
-      //write(STDOUT_FILENO, z, 6);
+    /* 
+     the two lines below move the cursor
+     snprintf(z, sizeof(z), "\x1b[%d;1H", E.screenrows);
+     write(STDOUT_FILENO, z, 6);
 
-     /*write(STDOUT_FILENO, "\x1b[K", 3);
-     write(STDOUT_FILENO, ex, 1);*/
-     editorSetMessage(":"); 
-     break;
+     write(STDOUT_FILENO, "\x1b[K", 3);
+     write(STDOUT_FILENO, ex, 1);
+     */
+
+      /*E.mode = 2;
+      editorSetMessage(":"); 
+      return;*/
+
 
     default:
-      break;
+      return;
 
     } 
-     
-  //command line mode below
 
-  } else {
+  /************************************   
+   *command line mode below E.mode = 2*
+   ************************************/
+
+  } else if (E.mode = 2) {
+
     if (c == '\x1b') {
       E.mode = 0;
       E.command[0] = '\0';
