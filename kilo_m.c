@@ -565,37 +565,25 @@ void editorDrawRows(struct abuf *ab) {
   for (y = 0; y < E.screenrows; y++) {
     int filerow = y + E.rowoff;
     if (filerow >= E.numrows) {
-      if (E.numrows == 0 && y == E.screenrows / 3) {
-        char welcome[80];
-        int welcomelen = snprintf(welcome, sizeof(welcome),
-          "Kilo editor -- version %s", KILO_VERSION);
-        if (welcomelen > E.screencols) welcomelen = E.screencols;
-        int padding = (E.screencols - welcomelen) / 2;
-        if (padding) {
-          abAppend(ab, "~", 1);
-          padding--;
-        }
-        while (padding--) abAppend(ab, " ", 1);
-        abAppend(ab, welcome, welcomelen);
-      } else {
-        //abAppend(ab, "~", 1); slz change 09-29-2018
-        abAppend(ab, "~\x1b[K", 4); 
-      }
+      abAppend(ab, "~\x1b[K", 4); 
+
     } else {
       int len = E.row[filerow].size - E.coloff;
       if (len < 0) len = 0;
       if (len > E.screencols) len = E.screencols;
       
+
       /*slz addition that checks to see if a row should
         be highlighted -- not sure this will ever be
         used but would be necessary if I introduce
         a limited version of vim visual mode
-        */
+        
 
       if (filerow >= E.highlight[0] && filerow <= E.highlight[1]) {
           //abAppend(ab, "\x1b[47m", 5);
           abAppend(ab, "\x1b[48;5;242m", 11);
           }
+       */
 
       abAppend(ab, &E.row[filerow].chars[E.coloff], len);
     
@@ -988,7 +976,8 @@ void editorProcessKeypress() {
     case C_dd:
       editorYank(1);
       editorDelRow(E.cy);
-      E.cy--;
+      if (E.cy > 0) E.cy--;
+      //E.cy--;
       E.cx = 0;
       E.command[0] = '\0';
       E.multiplier = 1;
