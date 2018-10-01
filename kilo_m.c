@@ -55,7 +55,7 @@ enum Command {
   C_gg,
   //C_G,
   C_yy,
-  C_p,
+  //C_p,
   //C_colon
 };
 
@@ -91,8 +91,9 @@ struct editorConfig {
 
 struct editorConfig E;
 
-//erow *buffer[20] = { NULL };
-char *buffer[20] = {NULL};
+// buffers below for yanking
+char *line_buffer[20] = {NULL}; //yanking lines
+char string_buffer[50] = {'\0'};
 
 typedef struct { char *key; int val; } t_symstruct;
 static t_symstruct lookuptable[] = {
@@ -114,7 +115,7 @@ static t_symstruct lookuptable[] = {
   {"gg", C_gg},
 //  {"G", C_G},
   {"yy", C_yy},
-  {"p", C_p},
+//  {"p", C_p},
   {"d$", C_d$}
 };
 
@@ -136,8 +137,10 @@ void editorMoveCursor(int key);
 void editorDelChar();
 int editorIsLineAllBlanks(int y); 
 void editorDeleteToEndOfLine();
-void editorYank(int n);
-void editorPaste();
+void editorYankLine(int n);
+void editorPasteLine();
+void editorPasteString();
+void editorYankString();
 
 int keyfromstring(char *key)
 {
@@ -1024,6 +1027,13 @@ void editorProcessKeypress() {
       editorSetMessage("\x1b[1m-- VISUAL --\x1b[0m");
       return;
 
+   case 'p':  
+     if (strlen(string_buffer)) editorPasteString();
+     else editorPasteLine();
+     E.command[0] = '\0';
+     E.repeat = 1;
+     return;
+
     case CTRL_KEY('b'):
     case CTRL_KEY('e'):
       editorDecorateWord(c);
@@ -1062,19 +1072,19 @@ void editorProcessKeypress() {
       editorDelWord();}
       E.command[0] = '\0';
       E.repeat = 1;
-      break;
+      return;
 
     case C_dd:
-      editorYank(1);
+      editorYankLine(1);
       editorDelRow(E.cy);
       E.cx = 0;
       E.command[0] = '\0';
       E.repeat = 1;
-      break;
+      return;
 
     case C_d$:
       editorDeleteToEndOfLine();
-      break;
+      return;
 
     case C_caw:
      for (int i = 0; i < E.repeat; i++){
@@ -1083,7 +1093,7 @@ void editorProcessKeypress() {
       E.repeat = 1;
       E.mode = 1;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      break;
+      return;
 
     case C_indent:
       for ( i = 0; i < E.repeat; i++ ) {
@@ -1092,7 +1102,7 @@ void editorProcessKeypress() {
       E.cy-=i;
       E.command[0] = '\0';
       E.repeat = 1;
-      break;
+      return;
 
     case C_unindent:
       for ( i = 0; i < E.repeat; i++ ) {
@@ -1101,69 +1111,7 @@ void editorProcessKeypress() {
       E.cy-=i;
       E.command[0] = '\0';
       E.repeat = 1;
-      break;
-
-/*
-    case C_o:
-      E.cx = 0;
-      editorInsertNewline(1);
-      E.mode = 1;
-      E.command[0] = '\0';
-      E.repeat = 1;
-      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      break;
-
-    case C_O:
-      E.cx = 0;
-      editorInsertNewline(0);
-      E.mode = 1;
-      E.command[0] = '\0';
-      E.repeat = 1;
-      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      break;
-
-    case C_i:
-      E.mode = 1;
-      E.command[0] = '\0';
-      E.repeat = 1;
-      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      break;
-
-    case C_s:
-     for (int i = 0; i < E.repeat; i++){
-      editorMoveCursor(ARROW_RIGHT);
-      editorDelChar();}
-      E.command[0] = '\0';
-      E.repeat = 1;
-      E.mode = 1;
-      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
-      break;
-
-    case C_x:
-     for (int i = 0; i < E.repeat; i++){
-      // BACKSPACE doesn't require cursor move by DEL;x;s do
-      editorMoveCursor(ARROW_RIGHT);
-      editorDelChar();}
-      E.command[0] = '\0';
-      E.repeat = 1;
-      break;
-
-    case C_a:
-      editorMoveCursor(ARROW_RIGHT);
-      E.mode = 1;
-      E.command[0] = '\0';
-      E.repeat = 1;
-      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      break;
-
-    case C_I:
-      E.cx = editorIndentAmount(E.cy);
-      E.mode = 1;
-      E.command[0] = '\0';
-      E.repeat = 1;
-      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      break;
-*/
+      return;
 
     case C_gg:
      E.cx = 0;
@@ -1171,43 +1119,22 @@ void editorProcessKeypress() {
      E.command[0] = '\0';
      E.repeat = 1;
      return;
-/*
-    case C_G:
-     E.cx = 0;
-     E.cy = E.numrows-1;
-     E.command[0] = '\0';
-     E.repeat = 1;
-     return;
-*/
 
    case C_yy:  
-     editorYank(E.repeat);
+     editorYankLine(E.repeat);
      E.command[0] = '\0';
      E.repeat = 1;
      return;
 
-   // leaving because have to think about "#p
+   /*
    case C_p:  
-     editorPaste();
+     if (strlen(string_buffer)) editorPasteString();
+     else editorPasteLine();
      E.command[0] = '\0';
      E.repeat = 1;
      return;
 
-    //case C_colon:
-
-    /* 
-     the two lines below move the cursor
-     snprintf(z, sizeof(z), "\x1b[%d;1H", E.screenrows);
-     write(STDOUT_FILENO, z, 6);
-
-     write(STDOUT_FILENO, "\x1b[K", 3);
-     write(STDOUT_FILENO, ex, 1);
-     */
-
-      /*E.mode = 2;
-      editorSetMessage(":"); 
-      return;*/
-
+    */
 
     default:
       return;
@@ -1320,7 +1247,7 @@ void editorProcessKeypress() {
     case 'x':
       E.repeat = E.highlight[1] - E.highlight[0] + 1;
       E.cy = E.highlight[0];
-      editorYank(E.repeat);
+      editorYankLine(E.repeat);
 
       for (int i = 0; i < E.repeat; i++) editorDelRow(E.cy);
       
@@ -1334,7 +1261,7 @@ void editorProcessKeypress() {
     case 'y':  
       E.repeat = E.highlight[1] - E.highlight[0] + 1;
       E.cy = E.highlight[0];
-      editorYank(E.repeat);
+      editorYankLine(E.repeat);
       E.command[0] = '\0';
       E.repeat = 1;
       E.mode = 0;
@@ -1396,7 +1323,7 @@ void editorProcessKeypress() {
     case 'x':
       E.repeat = E.highlight[1] - E.highlight[0] + 1;
       E.cx = E.highlight[0];
-      //editorYankVisual();
+      editorYankString(); 
 
       for (int i = 0; i < E.repeat; i++) {
         editorMoveCursor(ARROW_RIGHT);
@@ -1413,7 +1340,7 @@ void editorProcessKeypress() {
     case 'y':  
       E.repeat = E.highlight[1] - E.highlight[0] + 1;
       E.cx = E.highlight[0];
-      //editorYankVisual();
+      editorYankString();
       E.command[0] = '\0';
       E.repeat = 1;
       E.mode = 0;
@@ -1441,26 +1368,66 @@ void editorProcessKeypress() {
 
 /*** slz additions ***/
 
-void editorYank(int n){
+void editorYankLine(int n){
   for (int i=0; i < 10; i++) {
-    free(buffer[i]);
-    buffer[i] = NULL;
+    free(line_buffer[i]);
+    line_buffer[i] = NULL;
     }
+
   for (int i=0; i < n; i++) {
     int len = E.row[E.cy+i].size;
-    buffer[i] = malloc(len + 1);
-    memcpy(buffer[i], E.row[E.cy+i].chars, len);
-    buffer[i][len] = '\0';
+    line_buffer[i] = malloc(len + 1);
+    memcpy(line_buffer[i], E.row[E.cy+i].chars, len);
+    line_buffer[i][len] = '\0';
   }
+  // set string_buffer to "" to signal should paste line
+  string_buffer[0] = '\0';
 }
 
-void editorPaste(){
-  for (int i=0; i < 10; i++) {
-    if (buffer[i] == NULL) break;
+void editorYankString() {
+  int n,x;
+  erow *row = &E.row[E.cy];
+  for (x = E.highlight[0], n = 0; x < E.highlight[1]+1; x++, n++) {
+      string_buffer[n] = row->chars[x];
+  }
 
-    int len = strlen(buffer[i]);
+  string_buffer[n] = '\0';
+}
+
+void editorPasteString() {
+  if (E.cy == E.numrows) {
+    editorInsertRow(E.numrows, "", 0); //editorInsertRow will also insert another '\0'
+  }
+
+  erow *row = &E.row[E.cy];
+  if (E.cx < 0 || E.cx > row->size) E.cx = row->size;
+  int len = strlen(string_buffer);
+  row->chars = realloc(row->chars, row->size + len); 
+
+  /* moving all the chars at the current x cursor position on char
+     farther down the char string to make room for the new character
+     Maybe a clue from editorInsertRow - it's memmove is below
+     memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * (E.numrows - at));
+  */
+
+  memmove(&row->chars[E.cx + len], &row->chars[E.cx], row->size - E.cx); //****was E.cx + 1
+
+  for (int i = 0; i < len; i++) {
+    row->size++;
+    row->chars[E.cx] = string_buffer[i];
+    E.cx++;
+  }
+  E.dirty++;
+}
+
+
+void editorPasteLine(){
+  for (int i=0; i < 10; i++) {
+    if (line_buffer[i] == NULL) break;
+
+    int len = strlen(line_buffer[i]);
     E.cy++;
-    editorInsertRow(E.cy, buffer[i], len);
+    editorInsertRow(E.cy, line_buffer[i], len);
   }
 }
 
