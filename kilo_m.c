@@ -77,7 +77,7 @@ struct editorConfig {
   int screenrows; //number of rows and columns in the display
   int screencols;  //number of rows and columns in the display
   int numrows; // the number of rows of text so last text row is always row numrows
-  erow *row; //(e)ditorrow stores a pointer to an erow structure 
+  erow *row; //(e)ditorrow stores a pointer to a contiguous collection of erow structures 
   int dirty; //file changes since last save
   char *filename;
   char statusmsg[80]; //status msg is a character array max 80 char
@@ -95,27 +95,16 @@ struct editorConfig E;
 char *line_buffer[20] = {NULL}; //yanking lines
 char string_buffer[50] = {'\0'};
 
+/*below is for multi-character commands*/
 typedef struct { char *key; int val; } t_symstruct;
 static t_symstruct lookuptable[] = {
-/*  
-  {"x", C_x},
-  {"s", C_s},
-  {"i", C_i},
-  {"a", C_a},
-  {"I", C_I},
-  {"O", C_O},
-  {"o", C_o},
-*/
   {"caw", C_caw},
   {"daw", C_daw},
   {"dd", C_dd},
   {">>", C_indent},
   {"<<", C_unindent},
-//  {":", C_colon},
   {"gg", C_gg},
-//  {"G", C_G},
   {"yy", C_yy},
-//  {"p", C_p},
   {"d$", C_d$}
 };
 
@@ -303,7 +292,7 @@ void editorInsertRow(int at, char *s, size_t len) {
 
   /*E.row is a pointer to an array of erow structures
   The array of erows that E.row points to needs to have its memory enlarged when
-  you add a row*/
+  you add a row. Note that erow structues are just a size and a pointer*/
 
   E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
 
@@ -323,7 +312,7 @@ void editorInsertRow(int at, char *s, size_t len) {
   E.row[at].size = len;
   E.row[at].chars = malloc(len + 1);
   memcpy(E.row[at].chars, s, len);
-  E.row[at].chars[len] = '\0'; //not sure why terminating with ""
+  E.row[at].chars[len] = '\0'; //each line is made into a c-string (maybe for searching)
   E.numrows++;
   E.dirty++;
 }
@@ -333,11 +322,15 @@ void editorFreeRow(erow *row) {
 }
 
 void editorDelRow(int at) {
-  if (at < 0 || at >= E.numrows) return;
+  //if (at < 0 || at >= E.numrows) return;
   editorFreeRow(&E.row[at]);
-  memmove(&E.row[at], &E.row[at + 1], sizeof(erow) * (E.numrows - at - 1));
+  if ( E.numrows != 1) {
+    memmove(&E.row[at], &E.row[at + 1], sizeof(erow) * (E.numrows - at - 1));
+  } else {
+    E.row = NULL;
+  }
   E.numrows--;
-  if (E.cy == E.numrows) E.cy--; 
+  if (E.cy == E.numrows && E.cy > 0) E.cy--; 
   E.dirty++;
 }
 
@@ -420,8 +413,10 @@ void editorInsertNewline(int direction) {
 void editorDelChar() {
   if (E.cy == E.numrows) return;
   if (E.cx == 0 && E.cy == 0) return;
-
   erow *row = &E.row[E.cy];
+  if (E.cx == 0 && row->size < 2) return; //added slz doesn't seem right
+
+  //erow *row = &E.row[E.cy];
   if (E.cx > 0) {
     if (E.cx < 1 || E.cx >= 1+row->size) return;
 
@@ -741,53 +736,42 @@ char *editorPrompt(char *prompt) {
 */
 
 void editorMoveCursor(int key) {
-  //erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy]; //orig
-  //erow *row = (E.cy == E.numrows) ? NULL : &E.row[E.cy]; //my initial
-  //not sure we need the check
+  //erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy]; //orig - didn't thinke we needed check
+
   erow *row = &E.row[E.cy];
 
   switch (key) {
     case ARROW_LEFT:
     case 'h':
-      if (E.cx != 0) {
-        E.cx--;
-      } else if (E.cy > 0) {
-        E.cy--;
-        E.cx = E.row[E.cy].size;
-      }
+      if (E.cx != 0) E.cx--; //do need to check for row?
       break;
+
     case ARROW_RIGHT:
     case 'l':
-      //if (row && E.cx < row->size) { //original
-      if (E.cx < row->size) {
-        E.cx++;
-      } 
-      /*do nothing if cursor is at end of last line*/
-      //else if (row && E.cx == row->size && E.cy != E.numrows-1) { //original
-      else if (E.cx == row->size && E.cy != E.numrows-1) {
-        E.cy++;
-        E.cx = 0;
-     }
+      if (row && E.cx < row->size)  E.cx++;  //segfaults on opening if you arrow right w/o row
       break;
+
     case ARROW_UP:
     case 'k':
-      if (E.cy != 0) {
-        E.cy--;
-      }
+      if (E.cy != 0) E.cy--;
       break;
+
     case ARROW_DOWN:
     case 'j':
-      if (E.cy < E.numrows-1) { //slz change added -1
-        E.cy++;
-      }
+      if (E.cy < E.numrows-1) E.cy++; //slz change added -1 
       break;
   }
 
-  row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
+  /* Below deals with moving cursor up and down from longer rows to shorter rows 
+     row has to be calculated again because this is the new row you've landed on */
+  //row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy]; // I don't think this check is necessary
+
+  row = &E.row[E.cy];
   int rowlen = row ? row->size : 0;
-  if (E.cx > rowlen) {
-    E.cx = rowlen;
-  }
+  if (rowlen == 0) E.cx = 0;
+  else if (E.mode == 1 && E.cx >= rowlen) E.cx = rowlen;
+  else if (E.cx >= rowlen) E.cx = rowlen-1;
+
 }
 // higher level editor function depends on editorReadKey()
 void editorProcessKeypress() {
@@ -956,8 +940,8 @@ void editorProcessKeypress() {
       return;
     
     case 'a':
+      E.mode = 1; //this has to go here for MoveCursor to work right at EOLs
       editorMoveCursor(ARROW_RIGHT);
-      E.mode = 1;
       E.command[0] = '\0';
       E.repeat = 1;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
@@ -1052,8 +1036,9 @@ void editorProcessKeypress() {
       return;
 
     case '\x1b':
-     // E.mode = 0;
+     // Leave in E.mode = 0 -> normal mode
       E.command[0] = '\0';
+      E.repeat = 1;
       return;
   }
 
@@ -1300,6 +1285,9 @@ void editorProcessKeypress() {
       E.repeat = 1;
       editorSetMessage("");
       return;
+
+    default:
+      return;
     }
 
   } else if (E.mode == 4) {
@@ -1330,7 +1318,6 @@ void editorProcessKeypress() {
         editorDelChar(E.cx);
       }
 
-      //E.cx = 0;
       E.command[0] = '\0';
       E.repeat = 1;
       E.mode = 0;
@@ -1361,6 +1348,9 @@ void editorProcessKeypress() {
       E.command[0] = '\0';
       E.repeat = 1;
       editorSetMessage("");
+      return;
+
+    default:
       return;
     }
   }
@@ -1600,6 +1590,8 @@ int main(int argc, char *argv[]) {
   if (argc >= 2) {
     editorOpen(argv[1]);
   }
+
+  /*
   //I added the else - inserts text when no file is being read
   else {
     editorInsertRow(E.numrows, "Hello, Steve!", 13); //slz adds
@@ -1609,6 +1601,7 @@ int main(int argc, char *argv[]) {
     editorInsertRow(E.numrows, "abc def ghi", 11); //slz adds
     E.cy = 2; //puts cursor at end of line above
   }
+  */
 
   //editorSetMessage("HELP: Ctrl-S = save | Ctrl-Q = quit"); //slz commented this out
   editorSetMessage("rows: %d  cols: %d", E.screenrows, E.screencols); //this works prints rows: 43  cols: 159
