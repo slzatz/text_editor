@@ -123,6 +123,7 @@ void editorMoveCursorEOL();
 void editorMoveBeginningWord();
 void editorMoveEndWord(); 
 void editorMoveNextWord();
+void editorMarkupLink();
 
 int keyfromstring(char *key)
 {
@@ -1039,7 +1040,8 @@ void editorProcessKeypress() {
 
 // for testing purposes I am using CTRL-h in normal mode
     case CTRL_KEY('h'):
-      getcharundercursor(); 
+      //getcharundercursor(); 
+      editorMarkupLink(); 
       return;
 
     case '\x1b':
@@ -1534,7 +1536,7 @@ void editorMoveEndWord() {
     if (row->chars[j] < 48) break;
   }
 
-  E.cx = j -1;
+  E.cx = j - 1;
 }
 
 void editorDecorateWord(int c) {
@@ -1612,7 +1614,53 @@ void getcharundercursor() {
   char d = row->chars[E.cx];
   editorSetMessage("character under cursor at position %d of %d: %c", E.cx, row->size, d); 
 }
-/*** slz testing stuff ***/
+
+void editorMarkupLink() {
+  erow *row = &E.row[E.cy];
+  char *z;
+  char *http = "http";
+  z = strstr(row->chars, http);
+  int p = z - row->chars;
+
+  int j;
+  for (j = p + 10; j < row->size ; j++) { //url including http:// must be at least 10 chars you'd think
+    if (row->chars[j] == 32) break;
+  }
+
+  int len = j-p;
+  char *zz = malloc(len + 1);
+  memcpy(zz, z, len);
+  zz[len] = '\0';
+
+  E.cx = p;
+  editorInsertChar('[');
+  E.cx = j+1;
+  editorInsertChar(']');
+  editorInsertChar('[');
+  editorInsertChar('2');
+  editorInsertChar(']');
+
+  E.cy = E.numrows-1; //should check why this needs to be - 1
+  E.cx = 0;
+  editorInsertNewline(1);
+  E.cx = 0;
+  editorInsertNewline(1);
+  //int len = j-p;
+  //char *zz = malloc(len + 1);
+  //memcpy(zz, z, len);
+  //zz[len] = '\0';
+
+  editorInsertRow(E.cy, zz, len);
+  free(zz);
+  E.cx = 0;
+  editorInsertChar('[');
+  editorInsertChar('2');
+  editorInsertChar(']');
+  editorInsertChar(':');
+  editorInsertChar(' ');
+  editorSetMessage("z = %u and beginning position = %d and end = %d and %u", z, p, j,zz); 
+}
+/*** slz testing stuff (above) ***/
 
 /*** init ***/
 
