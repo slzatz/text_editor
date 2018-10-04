@@ -120,6 +120,9 @@ void editorPasteLine();
 void editorPasteString();
 void editorYankString();
 void editorMoveCursorEOL();
+void editorMoveBeginningWord();
+void editorMoveEndWord(); 
+void editorMoveNextWord();
 
 int keyfromstring(char *key)
 {
@@ -226,7 +229,7 @@ int editorReadKey() {
     }
 
     return '\x1b'; // if it doesn't match a known escape sequence like ] ... or O ... just return escape
-
+  
   } else {
       //editorSetMessage("You pressed %d", c); //slz
       return c;
@@ -319,6 +322,9 @@ void editorRowAppendString(erow *row, char *s, size_t len) {
 
 void editorRowDelChar(erow *row, int at) {
   if (at < 0 || at >= row->size) return;
+  // is there any reason to realloc for one character?
+  // row->chars = realloc(row->chars, row->size -1); 
+  //have to realloc when adding but I guess no need to realloc for one character
   memmove(&row->chars[at], &row->chars[at + 1], row->size - at);
   row->size--;
   E.dirty++;
@@ -326,18 +332,12 @@ void editorRowDelChar(erow *row, int at) {
 
 /*** editor operations ***/
 void editorInsertChar(int c) {
-  //E.cy is the cursor y position
-  // inserts a row if at the end of the file
   if (E.cy == E.numrows) {
     editorInsertRow(E.numrows, "", 0); //editorInsertRow will also insert another '\0'
   }
 
   erow *row = &E.row[E.cy];
-  if (E.cx < 0 || E.cx > row->size) E.cx = row->size;
-  // we have to insert a char so we need more memory
-  // why 2 more bytes??
-  // we add 2 because we also have to make room for the null byte??????
-  // no we added to because mmove added 1, which doesn't seem necessary
+  if (E.cx < 0 || E.cx > row->size) E.cx = row->size; //can either of these be true? ie is check necessary?
   row->chars = realloc(row->chars, row->size + 1); //******* was size + 2
 
   /* moving all the chars at the current x cursor position on char
@@ -765,14 +765,14 @@ void editorProcessKeypress() {
     case '\r':
       editorInsertNewline(1);
       break;
-
+/* commenting this out since ctrl-i for italic = 9 and /t = 9 but I never use tabs
     case '\t':
       editorInsertChar(' ');
       editorInsertChar(' ');
       editorInsertChar(' ');
       editorInsertChar(' ');
       break;
-
+*/
     case CTRL_KEY('q'):
       if (E.dirty && quit_times > 0) {
         editorSetMessage("WARNING!!! File has unsaved changes. "
@@ -829,15 +829,8 @@ void editorProcessKeypress() {
       editorMoveCursor(c);
       break;
 
-   // below is slz testing
-    case CTRL_KEY('h'):
-      //editorInsertChar('*');
-      // editorDecorateWord(c);
-      i = editorIndentAmount(E.cy);
-      editorSetMessage("i = %d", i ); 
-      break;
-
     case CTRL_KEY('b'):
+    case CTRL_KEY('i'):
     case CTRL_KEY('e'):
       editorDecorateWord(c);
       break;
@@ -878,11 +871,14 @@ void editorProcessKeypress() {
   switch (c) {
 
     case 'i':
-      E.mode = 1;
-      E.command[0] = '\0';
-      E.repeat = 1;
-      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+      if (E.command[0] == '\0') { //This probably needs to be generalized but makes sure 'd$' works
+        E.mode = 1;
+        E.command[0] = '\0';
+        E.repeat = 1;
+        editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       return;
+      }
+      break;
 
     case 's':
      for (int i = 0; i < E.repeat; i++){
@@ -908,18 +904,39 @@ void editorProcessKeypress() {
       return;
 
     case 'a':
-      E.mode = 1; //this has to go here for MoveCursor to work right at EOLs
-      editorMoveCursor(ARROW_RIGHT);
-      E.command[0] = '\0';
-      E.repeat = 1;
-      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+      if (E.command[0] == '\0') { //This probably needs to be generalized but makes sure 'd$' works
+        E.mode = 1; //this has to go here for MoveCursor to work right at EOLs
+        editorMoveCursor(ARROW_RIGHT);
+        E.command[0] = '\0';
+        E.repeat = 1;
+        editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       return;
+      }
+      break;
 
     case 'A':
       editorMoveCursorEOL();
       E.command[0] = '\0';
       E.repeat = 1;
       E.mode = 1;
+      return;
+
+    case 'w':
+      editorMoveNextWord();
+      E.command[0] = '\0';
+      E.repeat = 1;
+      return;
+
+    case 'b':
+      editorMoveBeginningWord();
+      E.command[0] = '\0';
+      E.repeat = 1;
+      return;
+
+    case 'e':
+      editorMoveEndWord();
+      E.command[0] = '\0';
+      E.repeat = 1;
       return;
 
     case '0':
@@ -1002,6 +1019,7 @@ void editorProcessKeypress() {
      return;
 
     case CTRL_KEY('b'):
+    case CTRL_KEY('i'):
     case CTRL_KEY('e'):
       editorDecorateWord(c);
       return;
@@ -1015,7 +1033,13 @@ void editorProcessKeypress() {
     case 'k':
     case 'l':
       editorMoveCursor(c);
-      E.command[0] = '\0'; //untested but I believe arrow should reset command
+      E.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
+      E.repeat = 1;
+      return;
+
+// for testing purposes I am using CTRL-h in normal mode
+    case CTRL_KEY('h'):
+      getcharundercursor(); 
       return;
 
     case '\x1b':
@@ -1308,6 +1332,7 @@ void editorProcessKeypress() {
       return;
 
     case CTRL_KEY('b'):
+    case CTRL_KEY('i'):
     case CTRL_KEY('e'):
       editorDecorateVisual(c);
       E.command[0] = '\0';
@@ -1427,7 +1452,7 @@ void editorUnIndentRow() {
 int editorIndentAmount(int y) {
   int i;
   erow *row = &E.row[y];
-  if (row->size == 0) return 0;
+  if ( !row || row->size == 0 ) return 0; //row is NULL if the row has been deleted or opening app
 
   for ( i = 0; i < row->size; i++) {
     if (row->chars[i] != ' ') break;}
@@ -1459,7 +1484,8 @@ void editorDelWord() {
 void editorDeleteToEndOfLine() {
   erow *row = &E.row[E.cy];
   row->size = E.cx;
-  //row->chars[row->size] = '\0';
+  //Arguably you don't have to reallocate when you reduce the length of chars
+  row->chars = realloc(row->chars, E.cx + 1); //added 10042018 - before wasn't reallocating memory
   row->chars[E.cx] = '\0';
   }
 
@@ -1467,19 +1493,60 @@ void editorMoveCursorEOL() {
   E.cx = E.row[E.cy].size; 
 }
 
-/*** slz testing stuff ***/
-void getcharundercursor() {
+void editorMoveNextWord() {
+  int j;
+  erow row = E.row[E.cy];
+  editorMoveEndWord();
+  for (j = E.cx + 1; j < row.size ; j++) {
+    if (row.chars[j] > 48) break;
+  }
+  E.cx = j;
+}
+
+void editorMoveBeginningWord() {
   erow *row = &E.row[E.cy];
-  char d = row->chars[E.cx];
-  editorSetMessage("character under cursor: %c", d); 
+  if (E.cx == 0) return;
+  for (;;) {
+    if (row->chars[E.cx - 1] < 48) E.cx--;
+    else break;
+    if (E.cx == 0) return;
+  }
+
+  int i;
+  for (i = E.cx - 1; i > -1; i--){
+    if (row->chars[i] < 48) break;
+  }
+
+  E.cx = i + 1;
+}
+
+void editorMoveEndWord() {
+  erow *row = &E.row[E.cy];
+  if (E.cx == row->size - 1) return;
+  for (;;) {
+    if (row->chars[E.cx + 1] < 48) E.cx++;
+    else break;
+    if (E.cx == row->size - 1) return;
+  }
+
+  int j;
+  for (j = E.cx + 1; j < row->size ; j++) {
+    if (row->chars[j] < 48) break;
+  }
+
+  E.cx = j -1;
 }
 
 void editorDecorateWord(int c) {
   erow *row = &E.row[E.cy];
+  char cc;
   if (row->chars[E.cx] < 48) return;
 
   char d[30]; //at some point need to take care of fact will die if word > 30
   int i,j,n,x;
+
+  /*Note to catch ` would have to be row->chars[i] < 48 || row-chars[i] == 96 - may not be worth it*/
+
   for (i = E.cx - 1; i > -1; i--){
     if (row->chars[i] < 48) break;
   }
@@ -1494,11 +1561,13 @@ void editorDecorateWord(int c) {
 
   d[n] = '\0';
   
-  if (row->chars[i] != '*'){
+  if (row->chars[i] != '*' && row->chars[i] != '`'){
+    cc = (c == CTRL_KEY('b') || c ==CTRL_KEY('i')) ? '*' : '`';
     E.cx = i + 1;
-    editorInsertChar('*');
+    //editorInsertChar('*');
+    editorInsertChar(cc);
     E.cx = j + 1;
-    editorInsertChar('*');
+    editorInsertChar(cc);
 
     if (c == CTRL_KEY('b')) {
       E.cx = i + 1;
@@ -1531,11 +1600,20 @@ void editorDecorateVisual(int c) {
     editorInsertChar('*');
     editorInsertChar('*');
   } else {
-    editorInsertChar('*');
+    char cc = (c ==CTRL_KEY('i')) ? '*' : '`';
+    editorInsertChar(cc);
     E.cx = E.highlight[1]+2;
-    editorInsertChar('*');
+    editorInsertChar(cc);
   }
 }
+/*** slz testing stuff ***/
+void getcharundercursor() {
+  erow *row = &E.row[E.cy];
+  char d = row->chars[E.cx];
+  editorSetMessage("character under cursor at position %d of %d: %c", E.cx, row->size, d); 
+}
+/*** slz testing stuff ***/
+
 /*** init ***/
 
 void initEditor() {
@@ -1565,6 +1643,7 @@ int main(int argc, char *argv[]) {
     editorOpen(argv[1]);
   }
 
+    editorInsertRow(E.numrows, "The rain in Spain falls mainly on the plain", 43); //slz adds
   /*
   //I added the else - inserts text when no file is being read
   else {
