@@ -124,12 +124,13 @@ void editorUnIndentRow();
 int editorIndentAmount(int y);
 void editorMoveCursor(int key);
 void editorDelChar();
-int editorIsLineAllBlanks(int y); 
+//int editorIsLineAllBlanks(int y); 
 void editorDeleteToEndOfLine();
 void editorYankLine(int n);
 void editorPasteLine();
 void editorPasteString();
 void editorYankString();
+void editorMoveCursorEOL();
 
 int keyfromstring(char *key)
 {
@@ -880,15 +881,14 @@ void editorProcessKeypress() {
     case '\x1b':
       E.mode = 0;
       if (E.cx > 0) E.cx--;
-      if (editorIsLineAllBlanks(E.cy)) {
-        E.cx = 0; 
-        erow *row = &E.row[E.cy];
-        for (;;){
-          if (row->chars[0] != ' ') break;
+      int n = editorIndentAmount(E.cy);
+      if (n == E.row[E.cy].size) {
+        E.cx = 0;
+        for (int i = 0; i < n; i++) {
           editorMoveCursor(ARROW_RIGHT);
           editorDelChar();
-      }  
-    }
+        }
+      }
       editorSetMessage("");
       break;
 
@@ -939,12 +939,37 @@ void editorProcessKeypress() {
       E.repeat = 1;
       return;
     
+    case 'r':
+      E.mode = 5;
+      return;
+
     case 'a':
       E.mode = 1; //this has to go here for MoveCursor to work right at EOLs
       editorMoveCursor(ARROW_RIGHT);
       E.command[0] = '\0';
       E.repeat = 1;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+      return;
+
+    case 'A':
+      editorMoveCursorEOL();
+      E.command[0] = '\0';
+      E.repeat = 1;
+      E.mode = 1;
+      return;
+
+    case '0':
+      E.cx = 0;
+      E.command[0] = '\0';
+      E.repeat = 1;
+      return;
+
+    case '$':
+      editorMoveCursorEOL();
+      editorMoveCursor(ARROW_LEFT);
+      E.command[0] = '\0';
+      E.repeat = 1;
+      //E.mode = 1;
       return;
 
     case 'I':
@@ -1353,7 +1378,15 @@ void editorProcessKeypress() {
     default:
       return;
     }
+  } else if (E.mode == 5) {
+      editorMoveCursor(ARROW_RIGHT);
+      editorDelChar();
+      editorInsertChar(c);
+      E.repeat = 1;
+      E.command[0] = '\0';
+      E.mode = 0;
   }
+
 }
 
 /*** slz additions ***/
@@ -1443,13 +1476,15 @@ void editorUnIndentRow() {
   E.dirty++;
 }
 
-int editorIsLineAllBlanks(int y) {
+/*Doesn't seem necessary
+  int editorIsLineAllBlanks(int y) {
   int i;
   erow *row = &E.row[y];
   i = editorIndentAmount(E.cy);
   if (i == row->size ) return 1;
   return 0;
 }
+*/
 
 int editorIndentAmount(int y) {
   int i;
@@ -1489,6 +1524,11 @@ void editorDeleteToEndOfLine() {
   //row->chars[row->size] = '\0';
   row->chars[E.cx] = '\0';
   }
+
+void editorMoveCursorEOL() {
+  E.cx = E.row[E.cy].size; 
+}
+
 /*** slz testing stuff ***/
 void getcharundercursor() {
   erow *row = &E.row[E.cy];
