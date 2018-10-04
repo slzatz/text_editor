@@ -38,25 +38,15 @@ enum editorKey {
 };
 
 enum Command {
-  //C_x,
-  //C_s,
-  //C_a,
-  //C_i,
-  //C_I,
   C_caw,
   C_daw,
   C_d$,
   C_dd,
   C_indent,
   C_unindent,
-  //C_o,
-  //C_O,
   C_c$,
   C_gg,
-  //C_G,
-  C_yy,
-  //C_p,
-  //C_colon
+  C_yy
 };
 
 /*** data ***/
@@ -124,7 +114,6 @@ void editorUnIndentRow();
 int editorIndentAmount(int y);
 void editorMoveCursor(int key);
 void editorDelChar();
-//int editorIsLineAllBlanks(int y); 
 void editorDeleteToEndOfLine();
 void editorYankLine(int n);
 void editorPasteLine();
@@ -136,23 +125,8 @@ int keyfromstring(char *key)
 {
     int i;
     for (i=0; i <  NKEYS; i++) {
-
-        /* for reasons that aren't clear this doesn't work but
-           not necessary to do it this way - the problem may
-           be that there is padding in the array of structures
-           so that the size of the structure doesn't necessarily
-           tell you where the next structure begins
-
-        t_symstruct *sym = lookuptable + i*sizeof(t_symstruct); 
-
-         The below does work but why create new pointer sym
-           when you don't have to
-
-        if (strcmp(sym->key, key) == 0)
-             return sym->val;*/
-
         if (strcmp(lookuptable[i].key, key) == 0)
-             return lookuptable[i].val;
+          return lookuptable[i].val;
     }
 
     //nothing should match -1
@@ -478,14 +452,6 @@ void editorOpen(char *filename) {
 }
 
 void editorSave() {
-  /*if (E.filename == NULL) {
-    E.filename = editorPrompt("Save as: %s (ESC to cancel)");
-    if (E.filename == NULL) {
-      editorSetMessage("Save aborted");
-      return;
-    }
-  }*/
-
   if (E.filename == NULL) return;
   int len;
   char *buf = editorRowsToString(&len);
@@ -801,7 +767,6 @@ void editorProcessKeypress() {
       break;
 
     case '\t':
-      //c = '*';
       editorInsertChar(' ');
       editorInsertChar(' ');
       editorInsertChar(' ');
@@ -834,7 +799,6 @@ void editorProcessKeypress() {
       break;
 
     case BACKSPACE:
-    //case CTRL_KEY('h'): //slz - didn't think needed ctrl-h for backspace
     case DEL_KEY:
       if (c == DEL_KEY) {
         editorMoveCursor(ARROW_RIGHT);}
@@ -965,12 +929,14 @@ void editorProcessKeypress() {
       return;
 
     case '$':
-      editorMoveCursorEOL();
-      editorMoveCursor(ARROW_LEFT);
-      E.command[0] = '\0';
-      E.repeat = 1;
-      //E.mode = 1;
-      return;
+      if (E.command[0] == '\0') { //This probably needs to be generalized but makes sure 'd$' works
+        editorMoveCursorEOL();
+        editorMoveCursor(ARROW_LEFT);
+        E.command[0] = '\0';
+        E.repeat = 1;
+        return;
+      }
+      break;
 
     case 'I':
       E.cx = editorIndentAmount(E.cy);
@@ -999,26 +965,18 @@ void editorProcessKeypress() {
       return;
 
     case 'G':
-     E.cx = 0;
-     E.cy = E.numrows-1;
-     E.command[0] = '\0';
-     E.repeat = 1;
-     return;
+      E.cx = 0;
+      E.cy = E.numrows-1;
+      E.command[0] = '\0';
+      E.repeat = 1;
+      return;
 
     case ':':
       E.mode = 2;
-
-  /* the two lines below move the cursor
-     snprintf(z, sizeof(z), "\x1b[%d;1H", E.screenrows);
-     write(STDOUT_FILENO, z, 6);
-
-     write(STDOUT_FILENO, "\x1b[K", 3);
-     write(STDOUT_FILENO, ex, 1);*/
-
-     E.command[0] = ':';
-     E.command[1] = '\0';
-     editorSetMessage(":"); 
-     return;
+      E.command[0] = ':';
+      E.command[1] = '\0';
+      editorSetMessage(":"); 
+      return;
 
     case 'V':
       E.mode = 3;
@@ -1135,16 +1093,6 @@ void editorProcessKeypress() {
      E.command[0] = '\0';
      E.repeat = 1;
      return;
-
-   /*
-   case C_p:  
-     if (strlen(string_buffer)) editorPasteString();
-     else editorPasteLine();
-     E.command[0] = '\0';
-     E.repeat = 1;
-     return;
-
-    */
 
     default:
       return;
@@ -1476,16 +1424,6 @@ void editorUnIndentRow() {
   E.dirty++;
 }
 
-/*Doesn't seem necessary
-  int editorIsLineAllBlanks(int y) {
-  int i;
-  erow *row = &E.row[y];
-  i = editorIndentAmount(E.cy);
-  if (i == row->size ) return 1;
-  return 0;
-}
-*/
-
 int editorIndentAmount(int y) {
   int i;
   erow *row = &E.row[y];
@@ -1581,10 +1519,6 @@ void editorDecorateWord(int c) {
       editorDelChar();
     }
   }
-  /*below needs to move nothing to do with anything but
-    was just a place I was testing highlighting
-    */
-  //E.highlight[0] = E.highlight[1] = 2;
   editorSetMessage("word under cursor: <%s>; start of word: %d; end of word: %d; n: %d; cursor: %d", d, i+1, j-1, n, E.cx); 
 }
 
@@ -1651,7 +1585,6 @@ int main(int argc, char *argv[]) {
     editorProcessKeypress();
     //editorSetMessage("row: %d  col: %d size: %d", E.cy, E.cx, E.row[E.cy].size); //shows row and column
   }
-  //erow *row = &E.row[E.cy];
 
   return 0;
 }
