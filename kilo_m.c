@@ -51,9 +51,6 @@ enum Command {
 
 /*** data ***/
 
-// apparently some c experts say you shouldn't typedef structs
-// The use of typedef for erow means you don't have to use struct again
-// This typedef erow is crucial
 typedef struct erow {
   int size; //the number of characters in the line
   char *chars; //points at the character array of a row - mem assigned by malloc
@@ -81,9 +78,11 @@ struct editorConfig {
 
 struct editorConfig E;
 
+char search_string[30] = {'\0'};
+
 // buffers below for yanking
 char *line_buffer[20] = {NULL}; //yanking lines
-char string_buffer[50] = {'\0'};
+char string_buffer[50] = {'\0'}; //yanking chars
 
 /*below is for multi-character commands*/
 typedef struct { char *key; int val; } t_symstruct;
@@ -124,6 +123,8 @@ void editorMoveBeginningWord();
 void editorMoveEndWord(); 
 void editorMoveNextWord();
 void editorMarkupLink();
+void getWordUnderCursor();
+void editorFindNextWord();
 
 int keyfromstring(char *key)
 {
@@ -1012,12 +1013,20 @@ void editorProcessKeypress() {
       editorSetMessage("\x1b[1m-- VISUAL --\x1b[0m");
       return;
 
-   case 'p':  
-     if (strlen(string_buffer)) editorPasteString();
-     else editorPasteLine();
-     E.command[0] = '\0';
-     E.repeat = 1;
-     return;
+    case 'p':  
+      if (strlen(string_buffer)) editorPasteString();
+      else editorPasteLine();
+      E.command[0] = '\0';
+      E.repeat = 1;
+      return;
+
+    case '*':  
+      getWordUnderCursor();
+      return;
+
+    case 'n':
+      editorFindNextWord();
+      return;
 
     case CTRL_KEY('b'):
     case CTRL_KEY('i'):
@@ -1045,7 +1054,7 @@ void editorProcessKeypress() {
       return;
 
     case '\x1b':
-     // Leave in E.mode = 0 -> normal mode
+    // Leave in E.mode = 0 -> normal mode
       E.command[0] = '\0';
       E.repeat = 1;
       return;
@@ -1544,8 +1553,9 @@ void editorDecorateWord(int c) {
   char cc;
   if (row->chars[E.cx] < 48) return;
 
-  char d[30]; //at some point need to take care of fact will die if word > 30
-  int i,j,n,x;
+  //char d[30]; // point need to take care of fact will die if word > 30
+  //int i,j,n,x;
+  int i, j;
 
   /*Note to catch ` would have to be row->chars[i] < 48 || row-chars[i] == 96 - may not be worth it*/
 
@@ -1556,13 +1566,15 @@ void editorDecorateWord(int c) {
   for (j = E.cx + 1; j < row->size ; j++) {
     if (row->chars[j] < 48) break;
   }
-
+  
+  /*
   for (x = i + 1, n = 0; x < j; x++, n++) {
       d[n] = row->chars[x];
   }
 
   d[n] = '\0';
-  
+  */
+
   if (row->chars[i] != '*' && row->chars[i] != '`'){
     cc = (c == CTRL_KEY('b') || c ==CTRL_KEY('i')) ? '*' : '`';
     E.cx = i + 1;
@@ -1590,7 +1602,7 @@ void editorDecorateWord(int c) {
       editorDelChar();
     }
   }
-  editorSetMessage("word under cursor: <%s>; start of word: %d; end of word: %d; n: %d; cursor: %d", d, i+1, j-1, n, E.cx); 
+  //editorSetMessage("word under cursor: <%s>; start of word: %d; end of word: %d; n: %d; cursor: %d", d, i+1, j-1, n, E.cx); 
 }
 
 void editorDecorateVisual(int c) {
@@ -1608,11 +1620,42 @@ void editorDecorateVisual(int c) {
     editorInsertChar(cc);
   }
 }
-/*** slz testing stuff ***/
-void getcharundercursor() {
+
+void getWordUnderCursor(){
   erow *row = &E.row[E.cy];
-  char d = row->chars[E.cx];
-  editorSetMessage("character under cursor at position %d of %d: %c", E.cx, row->size, d); 
+  if (row->chars[E.cx] < 48) return;
+
+  int i,j,n,x;
+
+  for (i = E.cx - 1; i > -1; i--){
+    if (row->chars[i] < 48) break;
+  }
+
+  for (j = E.cx + 1; j < row->size ; j++) {
+    if (row->chars[j] < 48) break;
+  }
+
+  for (x = i + 1, n = 0; x < j; x++, n++) {
+      search_string[n] = row->chars[x];
+  }
+
+  search_string[n] = '\0';
+  editorSetMessage("word under cursor: <%s>", search_string); 
+
+}
+
+void editorFindNextWord() {
+  int y, p;
+  char *z;
+  for (y=E.cy; y < E.numrows; y++){
+    erow *row = &E.row[y];
+
+    z = strstr(row->chars, search_string);
+    if (z==NULL) continue;
+    E.cy = y;
+    p = z - row->chars;
+    E.cx = p;
+  }
 }
 
 void editorMarkupLink() {
@@ -1637,7 +1680,8 @@ void editorMarkupLink() {
     E.cy = y;
     p = z - row->chars;
 
-    for (j = p + 10; j < row->size ; j++) { //url including http:// must be at least 10 chars you'd think
+    //url including http:// must be at least 10 chars you'd think
+    for (j = p + 10; j < row->size ; j++) { 
       if (row->chars[j] == 32) break;
     }
 
@@ -1655,12 +1699,12 @@ void editorMarkupLink() {
     editorInsertChar(']');
 
     if ( E.row[numrows-1].chars[0] != '[' ) {
-      E.cy = E.numrows - 1; //should check why this needs to be - 1 otherwise seg faults
+      E.cy = E.numrows - 1; //check why need - 1 otherwise seg faults
       E.cx = 0;
       editorInsertNewline(1);
       }
 
-    editorInsertRow(E.numrows, zz, len); //was E.cy, maybe should be E.cy-1
+    editorInsertRow(E.numrows, zz, len); 
     free(zz);
     E.cx = 0;
     E.cy = E.numrows - 1;
@@ -1673,6 +1717,15 @@ void editorMarkupLink() {
     n++;
   }
 }
+
+/*** slz testing stuff ***/
+
+void getcharundercursor() {
+  erow *row = &E.row[E.cy];
+  char d = row->chars[E.cx];
+  editorSetMessage("character under cursor at position %d of %d: %c", E.cx, row->size, d); 
+}
+
 /*** slz testing stuff (above) ***/
 
 /*** init ***/
