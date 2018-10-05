@@ -1616,49 +1616,62 @@ void getcharundercursor() {
 }
 
 void editorMarkupLink() {
-  erow *row = &E.row[E.cy];
+  int y, numrows, j, n, p;
   char *z;
   char *http = "http";
-  z = strstr(row->chars, http);
-  int p = z - row->chars;
+  char *bracket_http = "[http";
+  numrows = E.numrows;
+  n = 1;
 
-  int j;
-  for (j = p + 10; j < row->size ; j++) { //url including http:// must be at least 10 chars you'd think
-    if (row->chars[j] == 32) break;
+
+  for ( n=1; E.row[numrows-n].chars[0] == '[' ; n++ );
+
+
+  for (y=0; y<numrows; y++){
+    erow *row = &E.row[y];
+    if (row->chars[0] == '[') continue;
+    if (strstr(row->chars, bracket_http)) continue;
+
+    z = strstr(row->chars, http);
+    if (z==NULL) continue;
+    E.cy = y;
+    p = z - row->chars;
+
+    for (j = p + 10; j < row->size ; j++) { //url including http:// must be at least 10 chars you'd think
+      if (row->chars[j] == 32) break;
+    }
+
+    int len = j-p;
+    char *zz = malloc(len + 1);
+    memcpy(zz, z, len);
+    zz[len] = '\0';
+
+    E.cx = p;
+    editorInsertChar('[');
+    E.cx = j+1;
+    editorInsertChar(']');
+    editorInsertChar('[');
+    editorInsertChar(48+n);
+    editorInsertChar(']');
+
+    if ( E.row[numrows-1].chars[0] != '[' ) {
+      E.cy = E.numrows - 1; //should check why this needs to be - 1 otherwise seg faults
+      E.cx = 0;
+      editorInsertNewline(1);
+      }
+
+    editorInsertRow(E.numrows, zz, len); //was E.cy, maybe should be E.cy-1
+    free(zz);
+    E.cx = 0;
+    E.cy = E.numrows - 1;
+    editorInsertChar('[');
+    editorInsertChar(48+n);
+    editorInsertChar(']');
+    editorInsertChar(':');
+    editorInsertChar(' ');
+    editorSetMessage("z = %u and beginning position = %d and end = %d and %u", z, p, j,zz); 
+    n++;
   }
-
-  int len = j-p;
-  char *zz = malloc(len + 1);
-  memcpy(zz, z, len);
-  zz[len] = '\0';
-
-  E.cx = p;
-  editorInsertChar('[');
-  E.cx = j+1;
-  editorInsertChar(']');
-  editorInsertChar('[');
-  editorInsertChar('2');
-  editorInsertChar(']');
-
-  E.cy = E.numrows-1; //should check why this needs to be - 1
-  E.cx = 0;
-  editorInsertNewline(1);
-  E.cx = 0;
-  editorInsertNewline(1);
-  //int len = j-p;
-  //char *zz = malloc(len + 1);
-  //memcpy(zz, z, len);
-  //zz[len] = '\0';
-
-  editorInsertRow(E.cy, zz, len);
-  free(zz);
-  E.cx = 0;
-  editorInsertChar('[');
-  editorInsertChar('2');
-  editorInsertChar(']');
-  editorInsertChar(':');
-  editorInsertChar(' ');
-  editorSetMessage("z = %u and beginning position = %d and end = %d and %u", z, p, j,zz); 
 }
 /*** slz testing stuff (above) ***/
 
@@ -1691,18 +1704,15 @@ int main(int argc, char *argv[]) {
     editorOpen(argv[1]);
   }
 
-    editorInsertRow(E.numrows, "The rain in Spain falls mainly on the plain", 43); //slz adds
-  /*
   //I added the else - inserts text when no file is being read
   else {
     editorInsertRow(E.numrows, "Hello, Steve!", 13); //slz adds
     E.cx = E.row[E.cy].size; //put cursor at end of line
     editorInsertNewline(1); //slz adds 
-    editorInsertRow(E.numrows, "The rain in Spain falls mainly on the plain", 43); //slz adds
+    editorInsertRow(E.numrows, "http://www.webmd.com", 20); //slz adds
     editorInsertRow(E.numrows, "abc def ghi", 11); //slz adds
     E.cy = 2; //puts cursor at end of line above
   }
-  */
 
   //editorSetMessage("HELP: Ctrl-S = save | Ctrl-Q = quit"); //slz commented this out
   editorSetMessage("rows: %d  cols: %d", E.screenrows, E.screencols); //this works prints rows: 43  cols: 159
