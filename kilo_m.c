@@ -1022,6 +1022,7 @@ void editorProcessKeypress() {
 
     case '*':  
       getWordUnderCursor();
+      editorFindNextWord(); 
       return;
 
     case 'n':
@@ -1645,8 +1646,32 @@ void getWordUnderCursor(){
 }
 
 void editorFindNextWord() {
-  int y, p;
+  int y, x;
   char *z;
+  y = E.cy;
+  x = E.cx + 1; //in case sitting on beginning of word
+  for (;;) {
+    erow *row = &E.row[y];
+    z = strstr(&(row->chars[x]), search_string);
+    if ( z != NULL ) {
+      E.cy = y;
+      E.cx = z - row->chars;
+      break;
+    }
+    y++;
+    x = 0;
+    if ( y == E.numrows ) y = 0;
+    //if ( y == E.cy + 1 ) break;
+    editorSetMessage("x = %d; y = %d", x, y); 
+  }
+
+    editorSetMessage("x = %d; y = %d", x, y); 
+}
+
+/*void editorFindNextWord() {
+  int y, p, n;
+  char *z;
+  n = 0;
   for (y=E.cy; y < E.numrows; y++){
     erow *row = &E.row[y];
 
@@ -1656,7 +1681,7 @@ void editorFindNextWord() {
     p = z - row->chars;
     E.cx = p;
   }
-}
+}*/
 
 void editorMarkupLink() {
   int y, numrows, j, n, p;
