@@ -126,6 +126,7 @@ void editorMoveNextWord();
 void editorMarkupLink();
 void getWordUnderCursor();
 void editorFindNextWord();
+void editorChangeCase();
 
 int keyfromstring(char *key)
 {
@@ -552,7 +553,8 @@ void editorDrawRows(struct abuf *ab) {
   for (y = 0; y < E.screenrows; y++) {
     int filerow = y + E.rowoff;
     if (filerow >= E.numrows) {
-      abAppend(ab, "~\x1b[K", 4); 
+      //abAppend(ab, "~\x1b[K", 4); 
+      abAppend(ab, "\x1b[31m~\x1b[K", 9); 
 
     } else {
       int len = E.row[filerow].size - E.coloff;
@@ -916,6 +918,12 @@ void editorProcessKeypress() {
     
     case 'r':
       E.mode = 5;
+      return;
+
+    case '~':
+      editorChangeCase();
+      E.command[0] = '\0';
+      E.repeat = 1;
       return;
 
     case 'a':
@@ -1391,6 +1399,19 @@ void editorProcessKeypress() {
 }
 
 /*** slz additions ***/
+
+void editorChangeCase() {
+  erow *row = &E.row[E.cy];
+  char d = row->chars[E.cx];
+  if (d < 91 && d > 64) d = d + 32;
+  else if (d > 96 && d < 123) d = d - 32;
+  else {
+    editorMoveCursor(ARROW_RIGHT);
+    return;
+  }
+  editorDelChar();
+  editorInsertChar(d);
+}
 
 void editorYankLine(int n){
   for (int i=0; i < 10; i++) {
