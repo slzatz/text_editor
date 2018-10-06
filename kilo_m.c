@@ -112,6 +112,7 @@ void editorIndentRow();
 void editorUnIndentRow();
 int editorIndentAmount(int y);
 void editorMoveCursor(int key);
+void editorBackspace();
 void editorDelChar();
 void editorDeleteToEndOfLine();
 void editorYankLine(int n);
@@ -378,7 +379,6 @@ void editorInsertNewline(int direction) {
     E.cx = 0;
     for (;;){
       if (row->chars[0] != ' ') break;
-      editorMoveCursor(ARROW_RIGHT);
       editorDelChar();
     }
 
@@ -389,13 +389,29 @@ void editorInsertNewline(int direction) {
 
 void editorDelChar() {
   if (E.cy == E.numrows) return;
-  if (E.cx == 0 && E.cy == 0) return;
   erow *row = &E.row[E.cy];
-  if (E.cx == 0 && row->size < 2) return; //added slz doesn't seem right
 
-  //erow *row = &E.row[E.cy];
+  /* below means when row size is 1 there are no characters just '\0' */
+  /* I think row->size does not count the '\0' char*/
+  if (E.cx == 0 && row->size == 0) return; //added slz
+
+    memmove(&row->chars[E.cx], &row->chars[E.cx + 1], row->size - E.cx);
+    row->size--;
+    E.dirty++;
+}
+
+void editorBackspace() {
+  if (E.cy == E.numrows) return;
+  if (E.cx == 0 && E.cy == 0) return;
+
+  erow *row = &E.row[E.cy];
+
+  /* below means when row size is 1 there are no characters just '\0' */
+  //if (E.cx == 0 && row->size < 2) return; //added slz
+
   if (E.cx > 0) {
-    if (E.cx < 1 || E.cx >= 1+row->size) return;
+    //if (E.cx < 1 || E.cx >= 1+row->size) return;
+    //if ( E.cx >= 1+row->size) return;
 
     //memmove(dest, source, number of bytes to move?)
 
@@ -801,9 +817,10 @@ void editorProcessKeypress() {
       break;
 
     case BACKSPACE:
+      editorBackspace();
+      break;
+
     case DEL_KEY:
-      if (c == DEL_KEY) {
-        editorMoveCursor(ARROW_RIGHT);}
       editorDelChar();
       break;
 
@@ -844,7 +861,6 @@ void editorProcessKeypress() {
       if (n == E.row[E.cy].size) {
         E.cx = 0;
         for (int i = 0; i < n; i++) {
-          editorMoveCursor(ARROW_RIGHT);
           editorDelChar();
         }
       }
@@ -884,7 +900,6 @@ void editorProcessKeypress() {
 
     case 's':
      for (int i = 0; i < E.repeat; i++){
-      editorMoveCursor(ARROW_RIGHT);
       editorDelChar();}
       E.command[0] = '\0';
       E.repeat = 1;
@@ -894,8 +909,6 @@ void editorProcessKeypress() {
 
     case 'x':
      for (int i = 0; i < E.repeat; i++){
-      // BACKSPACE doesn't require cursor move by DEL;x;s do
-      editorMoveCursor(ARROW_RIGHT);
       editorDelChar();}
       E.command[0] = '\0';
       E.repeat = 1;
@@ -918,16 +931,22 @@ void editorProcessKeypress() {
 
     case 'A':
       editorMoveCursorEOL();
+      E.mode = 1; //needs to be here for movecursor to work at EOLs
+      editorMoveCursor(ARROW_RIGHT);
       E.command[0] = '\0';
       E.repeat = 1;
       E.mode = 1;
+      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       return;
 
     case 'w':
-      editorMoveNextWord();
-      E.command[0] = '\0';
-      E.repeat = 1;
-      return;
+      if (E.command[0] == '\0') { //This probably needs to be generalized but makes sure 'd$' works
+        editorMoveNextWord();
+        E.command[0] = '\0';
+        E.repeat = 1;
+        return;
+      }
+      break;
 
     case 'b':
       editorMoveBeginningWord();
@@ -950,7 +969,6 @@ void editorProcessKeypress() {
     case '$':
       if (E.command[0] == '\0') { //This probably needs to be generalized but makes sure 'd$' works
         editorMoveCursorEOL();
-        editorMoveCursor(ARROW_LEFT);
         E.command[0] = '\0';
         E.repeat = 1;
         return;
@@ -1323,7 +1341,6 @@ void editorProcessKeypress() {
       editorYankString(); 
 
       for (int i = 0; i < E.repeat; i++) {
-        editorMoveCursor(ARROW_RIGHT);
         editorDelChar(E.cx);
       }
 
@@ -1364,7 +1381,6 @@ void editorProcessKeypress() {
       return;
     }
   } else if (E.mode == 5) {
-      editorMoveCursor(ARROW_RIGHT);
       editorDelChar();
       editorInsertChar(c);
       E.repeat = 1;
@@ -1454,7 +1470,6 @@ void editorUnIndentRow() {
   E.cx = 0;
   for (int i = 0; i < 4; i++) {
     if (row->chars[0] == ' ') {
-      editorMoveCursor(ARROW_RIGHT);
       editorDelChar();
     }
   }
@@ -1486,7 +1501,6 @@ void editorDelWord() {
   E.cx = i+1;
 
   for (x = 0 ; x < j-i; x++) {
-      editorMoveCursor(ARROW_RIGHT);
       editorDelChar();
   }
   E.dirty++;
@@ -1502,7 +1516,7 @@ void editorDeleteToEndOfLine() {
   }
 
 void editorMoveCursorEOL() {
-  E.cx = E.row[E.cy].size; 
+  E.cx = E.row[E.cy].size - 1; 
 }
 
 void editorMoveNextWord() {
@@ -1554,8 +1568,6 @@ void editorDecorateWord(int c) {
   char cc;
   if (row->chars[E.cx] < 48) return;
 
-  //char d[30]; // point need to take care of fact will die if word > 30
-  //int i,j,n,x;
   int i, j;
 
   /*Note to catch ` would have to be row->chars[i] < 48 || row-chars[i] == 96 - may not be worth it*/
@@ -1568,18 +1580,9 @@ void editorDecorateWord(int c) {
     if (row->chars[j] < 48) break;
   }
   
-  /*
-  for (x = i + 1, n = 0; x < j; x++, n++) {
-      d[n] = row->chars[x];
-  }
-
-  d[n] = '\0';
-  */
-
   if (row->chars[i] != '*' && row->chars[i] != '`'){
     cc = (c == CTRL_KEY('b') || c ==CTRL_KEY('i')) ? '*' : '`';
     E.cx = i + 1;
-    //editorInsertChar('*');
     editorInsertChar(cc);
     E.cx = j + 1;
     editorInsertChar(cc);
@@ -1591,19 +1594,18 @@ void editorDecorateWord(int c) {
       editorInsertChar('*');
     }
   } else {
-    E.cx = i+1;
+    E.cx = i;
     editorDelChar();
-    E.cx = j;
+    E.cx = j-1;
     editorDelChar();
 
     if (c == CTRL_KEY('b')) {
-      E.cx = i;
+      E.cx = i - 1;
       editorDelChar();
-      E.cx = j-1;
+      E.cx = j - 2;
       editorDelChar();
     }
   }
-  //editorSetMessage("word under cursor: <%s>; start of word: %d; end of word: %d; n: %d; cursor: %d", d, i+1, j-1, n, E.cx); 
 }
 
 void editorDecorateVisual(int c) {
@@ -1649,8 +1651,10 @@ void editorFindNextWord() {
   int y, x;
   char *z;
   y = E.cy;
-  x = E.cx + 1; //in case sitting on beginning of word
-  for (;;) {
+  x = E.cx + 1; //in case sitting on beginning of the word
+ 
+  /*n counter is for no matches for command 'n'*/
+  for ( int n=0; n < E.numrows; n++ ) {
     erow *row = &E.row[y];
     z = strstr(&(row->chars[x]), search_string);
     if ( z != NULL ) {
@@ -1661,8 +1665,6 @@ void editorFindNextWord() {
     y++;
     x = 0;
     if ( y == E.numrows ) y = 0;
-    //if ( y == E.cy + 1 ) break;
-    editorSetMessage("x = %d; y = %d", x, y); 
   }
 
     editorSetMessage("x = %d; y = %d", x, y); 
