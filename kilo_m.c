@@ -72,8 +72,10 @@ struct editorConfig {
   struct termios orig_termios;
   int highlight[2];
   int mode;
-  char command[20]; //needs to accomodate file names
+  char command[20]; //needs to accomodate file name ?malloc heap array
   int repeat;
+  int indent;
+  int smartindent;
 };
 
 struct editorConfig E;
@@ -358,23 +360,31 @@ void editorInsertChar(int c) {
   E.cx++;
 }
 
+/* uses VLA */
 void editorInsertNewline(int direction) {
   erow *row = &E.row[E.cy];
   int i;
   if (E.cx == 0 || E.cx == row->size) {
-    char spaces[20] = "                   ";
-    i = editorIndentAmount(E.cy);
+    if (E.smartindent) i = editorIndentAmount(E.cy);
+    else i = 0;
+    char spaces[i + 1]; //VLA
+    for (int j=0; j<i; j++) {
+      spaces[j] = ' ';
+    }
     spaces[i] = '\0';
     E.cy+=direction;
     editorInsertRow(E.cy, spaces, i);
     E.cx = i;
+    
+      
   }
   else {
     editorInsertRow(E.cy + 1, &row->chars[E.cx], row->size - E.cx);
     row = &E.row[E.cy];
     row->size = E.cx;
     row->chars[row->size] = '\0';//wouldn't row->chars[E.cx] = 0 be better
-    i = editorIndentAmount(E.cy);
+    if (E.smartindent) i = editorIndentAmount(E.cy);
+    else i = 0;
     E.cy++;
     row = &E.row[E.cy];
     E.cx = 0;
@@ -554,6 +564,7 @@ void editorDrawRows(struct abuf *ab) {
     int filerow = y + E.rowoff;
     if (filerow >= E.numrows) {
       //abAppend(ab, "~\x1b[K", 4); 
+      //first escape is red and second erases rest of line
       abAppend(ab, "\x1b[31m~\x1b[K", 9); 
 
     } else {
@@ -564,6 +575,7 @@ void editorDrawRows(struct abuf *ab) {
       if (E.mode == 3 && filerow >= E.highlight[0] && filerow <= E.highlight[1]) {
           abAppend(ab, "\x1b[48;5;242m", 11);
           abAppend(ab, &E.row[filerow].chars[E.coloff], len);
+          abAppend(ab, "\x1b[0m", 4); //slz return background to normal
         
       } else if (E.mode == 4 && filerow == E.cy) {
           abAppend(ab, &E.row[filerow].chars[0], E.highlight[0]);
@@ -660,9 +672,15 @@ void editorRefreshScreen() {
   abAppend(&ab, "\x1b[?25h", 6); //shows the cursor
 
   write(STDOUT_FILENO, ab.b, ab.len);
+
+  // could ab be memcopied into cd until mode changes from 1 to 0?
+  // could cd then be freed when mode changed from
+
   abFree(&ab);
  // nn++;
 }
+
+
 /*va_list, va_start(), and va_end() come from <stdarg.h> and vsnprintf() is
 from <stdio.h> and time() is from <time.h>.  stdarg.h allows functions to accept a
 variable number of arguments and are declared with an ellipsis in place of the last parameter.*/
@@ -856,6 +874,11 @@ void editorProcessKeypress() {
       editorDecorateWord(c);
       break;
 
+    case CTRL_KEY('z'):
+      E.smartindent = (E.smartindent == 1) ? 0 : 1;
+      editorSetMessage("E.smartindent = %d", E.smartindent); 
+      break;
+
     case '\x1b':
       E.mode = 0;
       if (E.cx > 0) E.cx--;
@@ -884,7 +907,8 @@ void editorProcessKeypress() {
  } else if (E.mode == 0){
  
   /*leading digit is a multiplier*/
-  if (isdigit(c)) {
+  if (c > 48 && c < 58) {
+  //if (isdigit(c)) { //don't want to catch 0
     E.repeat = c - 48;
     return;}
 
@@ -1015,7 +1039,7 @@ void editorProcessKeypress() {
       E.command[0] = '\0';
       E.repeat = 1;
       return;
-
+  
     case ':':
       E.mode = 2;
       E.command[0] = ':';
@@ -1053,6 +1077,11 @@ void editorProcessKeypress() {
 
     case 'n':
       editorFindNextWord();
+      return;
+
+    case CTRL_KEY('z'):
+      E.smartindent = (E.smartindent == 4) ? 0 : 4;
+      editorSetMessage("E.smartindent = %d", E.smartindent); 
       return;
 
     case CTRL_KEY('b'):
@@ -1481,7 +1510,7 @@ void editorIndentRow() {
   if (row->size == 0) return;
   //E.cx = 0;
   E.cx = editorIndentAmount(E.cy);
-  for (int i = 0; i < 4; i++) editorInsertChar(' ');
+  for (int i = 0; i < E.indent; i++) editorInsertChar(' ');
   E.dirty++;
 }
 
@@ -1489,7 +1518,7 @@ void editorUnIndentRow() {
   erow *row = &E.row[E.cy];
   if (row->size == 0) return;
   E.cx = 0;
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < E.indent; i++) {
     if (row->chars[0] == ' ') {
       editorDelChar();
     }
@@ -1793,6 +1822,8 @@ void initEditor() {
   E.mode = 0; //0=normal; 1=insert; 2=command line
   E.command[0] = '\0';
   E.repeat = 1; //number of times to repeat commands like x,s,yy also used for visual line mode x,y
+  E.indent = 4;
+  E.smartindent = 1;
 
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
   E.screenrows -= 2;
