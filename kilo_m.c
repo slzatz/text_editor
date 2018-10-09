@@ -65,6 +65,8 @@ struct editorConfig {
   int screencols;  //number of rows and columns in the display
   int numrows; // the number of rows of text so last text row is always row numrows
   erow *row; //(e)ditorrow stores a pointer to a contiguous collection of erow structures 
+  int prev_numrows; // the number of rows of text so last text row is always row numrows
+  erow *prev_row; //for undo purposes
   int dirty; //file changes since last save
   char *filename;
   char statusmsg[80]; //status msg is a character array max 80 char
@@ -80,7 +82,7 @@ struct editorConfig {
 
 struct editorConfig E;
 
-char search_string[30] = {'\0'};
+char search_string[30] = {'\0'}; //used for '*' and 'n' searches
 
 // buffers below for yanking
 char *line_buffer[20] = {NULL}; //yanking lines
@@ -129,6 +131,8 @@ void editorMarkupLink();
 void getWordUnderCursor();
 void editorFindNextWord();
 void editorChangeCase();
+void editorRestoreSnapshot(); 
+void editorCreateSnapshot(); 
 
 int keyfromstring(char *key)
 {
@@ -201,36 +205,30 @@ int editorReadKey() {
     if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
     if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
 
-    if (seq[0] == '[') {
-      if (seq[1] >= '0' && seq[1] <= '9') {
-        if (read(STDIN_FILENO, &seq[2], 1) != 1) return '\x1b'; //need 4 bytes
-        if (seq[2] == '~') {
-          //editorSetMessage("You pressed %c%c%c", seq[0], seq[1], seq[2]); //slz
-          switch (seq[1]) {
-            case '1': return HOME_KEY; //not being issued
-            case '3': return DEL_KEY; //<esc>[3~
-            case '4': return END_KEY;  //not being issued
-            case '5': return PAGE_UP; //<esc>[5~
-            case '6': return PAGE_DOWN;  //<esc>[6~
-            case '7': return HOME_KEY; //not being issued
-            case '8': return END_KEY;  //not being issued
-          }
-        }
-      } else {
-          //editorSetMessage("You pressed %c%c", seq[0], seq[1]); //slz
-          switch (seq[1]) {
-            case 'A': return ARROW_UP; //<esc>[A
-            case 'B': return ARROW_DOWN; //<esc>[B
-            case 'C': return ARROW_RIGHT; //<esc>[C
-            case 'D': return ARROW_LEFT; //<esc>[D
-            case 'H': return HOME_KEY; // <esc>[H - this one is being issued
-            case 'F': return END_KEY;  // <esc>[F - this one is being issued
+    // Assumption is that seq[0] == '[' 
+    if (seq[1] >= '0' && seq[1] <= '9') {
+      if (read(STDIN_FILENO, &seq[2], 1) != 1) return '\x1b'; //need 4 bytes
+      if (seq[2] == '~') {
+        //editorSetMessage("You pressed %c%c%c", seq[0], seq[1], seq[2]); //slz
+        switch (seq[1]) {
+          case '1': return HOME_KEY; //not being issued
+          case '3': return DEL_KEY; //<esc>[3~
+          case '4': return END_KEY;  //not being issued
+          case '5': return PAGE_UP; //<esc>[5~
+          case '6': return PAGE_DOWN;  //<esc>[6~
+          case '7': return HOME_KEY; //not being issued
+          case '8': return END_KEY;  //not being issued
         }
       }
-    } else if (seq[0] == 'O') { 
-      switch (seq[1]) {
-        case 'H': return HOME_KEY; //<esc>OH - not being used
-        case 'F': return END_KEY; //<esc>OF - not being used
+    } else {
+        //editorSetMessage("You pressed %c%c", seq[0], seq[1]); //slz
+        switch (seq[1]) {
+          case 'A': return ARROW_UP; //<esc>[A
+          case 'B': return ARROW_DOWN; //<esc>[B
+          case 'C': return ARROW_RIGHT; //<esc>[C
+          case 'D': return ARROW_LEFT; //<esc>[D
+          case 'H': return HOME_KEY; // <esc>[H - this one is being issued
+          case 'F': return END_KEY;  // <esc>[F - this one is being issued
       }
     }
 
@@ -402,9 +400,9 @@ void editorDelChar() {
   if (E.cy == E.numrows) return;
   erow *row = &E.row[E.cy];
 
-  /* below means when row size is 1 there are no characters just '\0' */
-  /* I think row->size does not count the '\0' char*/
-  if (E.cx == 0 && row->size == 0) return; //added slz
+  /* row size = 1 means there is 1 char; size 0 means 0 chars */
+  /* Note that row->size does not count the terminating '\0' char*/
+  if (E.cx == 0 && row->size == 0) return; 
 
     memmove(&row->chars[E.cx], &row->chars[E.cx + 1], row->size - E.cx);
     row->size--;
@@ -412,30 +410,22 @@ void editorDelChar() {
 }
 
 void editorBackspace() {
-  if (E.cy == E.numrows) return;
   if (E.cx == 0 && E.cy == 0) return;
-
   erow *row = &E.row[E.cy];
 
-  /* below means when row size is 1 there are no characters just '\0' */
-  //if (E.cx == 0 && row->size < 2) return; //added slz
-
   if (E.cx > 0) {
-    //if (E.cx < 1 || E.cx >= 1+row->size) return;
-    //if ( E.cx >= 1+row->size) return;
 
     //memmove(dest, source, number of bytes to move?)
-
     memmove(&row->chars[E.cx - 1], &row->chars[E.cx], row->size - E.cx + 1);
     row->size--;
-    E.dirty++;
     E.cx--;
   } else {
     E.cx = E.row[E.cy - 1].size;
     editorRowAppendString(&E.row[E.cy - 1], row->chars, row->size);
     editorDelRow(E.cy);
-    E.cy--;
+    if (E.cy != E.numrows - 1) E.cy--; //editorDelRow will decrement if last row
   }
+  E.dirty++;
 }
 
 /*** file i/o ***/
@@ -558,8 +548,20 @@ void editorScroll() {
   }
 }
 // "drawing" rows really means updating the ab buffer
+// if keypress was a 'u' you don't want to
+// draw the rows until you reset the rows
+// could you free(E.row) set it to equal E.prev_row and E.prev_row = NULL
 void editorDrawRows(struct abuf *ab) {
   int y;
+
+
+  //before any of the below happened could you
+  //set E.rows = E.prev_row if keystroke was 'u'
+  //and otherwise E.prev_row mallocs enought space to memcpy
+  //each char array that the E.row array of structures points to
+  //for j to numrows E.row[n] copied with a new pointer E.prev_row[n]
+
+
   for (y = 0; y < E.screenrows; y++) {
     int filerow = y + E.rowoff;
     if (filerow >= E.numrows) {
@@ -792,6 +794,13 @@ void editorProcessKeypress() {
   int c = editorReadKey();
 
 
+/**************************************** 
+ * This would be a place to create prev * 
+ * row                                  *
+ ***************************************/
+  if (c == 'u' || c == 'i' || c == '\x1b' || (E.mode == 0 && isdigit(c))) ;
+  else editorCreateSnapshot();
+
 /*************************************** 
  * This is where you enter insert mode* 
  * E.mode = 1
@@ -800,17 +809,11 @@ void editorProcessKeypress() {
   if (E.mode == 1){
 
   switch (c) {
+
     case '\r':
       editorInsertNewline(1);
       break;
-/* commenting this out since ctrl-i for italic = 9 and /t = 9 but I never use tabs
-    case '\t':
-      editorInsertChar(' ');
-      editorInsertChar(' ');
-      editorInsertChar(' ');
-      editorInsertChar(' ');
-      break;
-*/
+
     case CTRL_KEY('q'):
       if (E.dirty && quit_times > 0) {
         editorSetMessage("WARNING!!! File has unsaved changes. "
@@ -1079,6 +1082,11 @@ void editorProcessKeypress() {
       editorFindNextWord();
       return;
 
+    case 'u':
+      // set some flag that says set E.row --> E.prev_row
+      editorRestoreSnapshot();
+      return;
+
     case CTRL_KEY('z'):
       E.smartindent = (E.smartindent == 4) ? 0 : 4;
       editorSetMessage("E.smartindent = %d", E.smartindent); 
@@ -1134,8 +1142,10 @@ void editorProcessKeypress() {
       return;
 
     case C_dd:
-      editorYankLine(1);
-      editorDelRow(E.cy);
+      editorYankLine(E.repeat);
+     for (int i = 0; i < E.repeat; i++){
+      //editorYankLine(1);
+      editorDelRow(E.cy);}
       E.cx = 0;
       E.command[0] = '\0';
       E.repeat = 1;
@@ -1429,6 +1439,36 @@ void editorProcessKeypress() {
 
 /*** slz additions ***/
 
+void editorCreateSnapshot() {
+  for (int j = 0 ; j < E.prev_numrows ; j++ ) {
+    free(E.prev_row[j].chars);
+  }
+  E.prev_row = realloc(E.prev_row, sizeof(erow) * E.numrows );
+  for ( int i = 0 ; i < E.numrows ; i++ ) {
+    int len = E.row[i].size;
+    E.prev_row[i].chars = malloc(len + 1);
+    E.prev_row[i].size = len;
+    memcpy(E.prev_row[i].chars, E.row[i].chars, len);
+    E.prev_row[i].chars[len] = '\0';
+  }
+  E.prev_numrows = E.numrows;
+}
+
+void editorRestoreSnapshot() {
+  for (int j = 0 ; j < E.numrows ; j++ ) {
+    free(E.row[j].chars);
+  } 
+  E.row = realloc(E.row, sizeof(erow) * E.prev_numrows );
+  for (int i = 0 ; i < E.prev_numrows ; i++ ) {
+    int len = E.prev_row[i].size;
+    E.row[i].chars = malloc(len + 1);
+    E.row[i].size = len;
+    memcpy(E.row[i].chars, E.prev_row[i].chars, len);
+    E.row[i].chars[len] = '\0';
+  }
+  E.numrows = E.prev_numrows;
+}
+
 void editorChangeCase() {
   erow *row = &E.row[E.cy];
   char d = row->chars[E.cx];
@@ -1720,21 +1760,6 @@ void editorFindNextWord() {
     editorSetMessage("x = %d; y = %d", x, y); 
 }
 
-/*void editorFindNextWord() {
-  int y, p, n;
-  char *z;
-  n = 0;
-  for (y=E.cy; y < E.numrows; y++){
-    erow *row = &E.row[y];
-
-    z = strstr(row->chars, search_string);
-    if (z==NULL) continue;
-    E.cy = y;
-    p = z - row->chars;
-    E.cx = p;
-  }
-}*/
-
 void editorMarkupLink() {
   int y, numrows, j, n, p;
   char *z;
@@ -1814,6 +1839,8 @@ void initEditor() {
   E.coloff = 0;  //col the user is currently scrolled to  
   E.numrows = 0; //number of rows of text
   E.row = NULL; //pointer to the erow structure 'array'
+  E.prev_numrows = 0; //number of rows of text
+  E.prev_row = NULL;
   E.dirty = 0;
   E.filename = NULL;
   E.statusmsg[0] = '\0'; // inital statusmsg is ""
@@ -1851,6 +1878,7 @@ int main(int argc, char *argv[]) {
 
   while (1) {
     editorRefreshScreen(); //screen is refreshed after every key press
+    // would think that before the keypress you would set E.prev_row = memcopy E.row
     editorProcessKeypress();
     //editorSetMessage("row: %d  col: %d size: %d", E.cy, E.cx, E.row[E.cy].size); //shows row and column
   }
