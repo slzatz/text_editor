@@ -39,7 +39,10 @@ enum editorKey {
 
 enum Command {
   C_caw,
+  C_cw,
   C_daw,
+  C_dw,
+  C_de,
   C_d$,
   C_dd,
   C_indent,
@@ -92,7 +95,10 @@ char string_buffer[50] = {'\0'}; //yanking chars
 typedef struct { char *key; int val; } t_symstruct;
 static t_symstruct lookuptable[] = {
   {"caw", C_caw},
+  {"cw", C_cw},
   {"daw", C_daw},
+  {"dw", C_dw},
+  {"de", C_de},
   {"dd", C_dd},
   {">>", C_indent},
   {"<<", C_unindent},
@@ -783,7 +789,7 @@ void editorMoveCursor(int key) {
 // higher level editor function depends on editorReadKey()
 void editorProcessKeypress() {
   static int quit_times = KILO_QUIT_TIMES;
-  int i;
+  int i, start, end;
   //char ex[10] = {':', '\0'};
   //char z[10];
 
@@ -798,8 +804,8 @@ void editorProcessKeypress() {
  * This would be a place to create prev * 
  * row                                  *
  ***************************************/
-  if (c == 'u' || c == 'i' || c == '\x1b' || (E.mode == 0 && isdigit(c))) ;
-  else editorCreateSnapshot();
+  //if (c == 'u' || c == 'i' || c == '\x1b' || (E.mode == 0 && isdigit(c))) ;
+  //else editorCreateSnapshot();
 
 /*************************************** 
  * This is where you enter insert mode* 
@@ -811,6 +817,7 @@ void editorProcessKeypress() {
   switch (c) {
 
     case '\r':
+      editorCreateSnapshot();
       editorInsertNewline(1);
       break;
 
@@ -840,10 +847,12 @@ void editorProcessKeypress() {
       break;
 
     case BACKSPACE:
+      editorCreateSnapshot();
       editorBackspace();
       break;
 
     case DEL_KEY:
+      editorCreateSnapshot();
       editorDelChar();
       break;
 
@@ -874,6 +883,7 @@ void editorProcessKeypress() {
     case CTRL_KEY('b'):
     case CTRL_KEY('i'):
     case CTRL_KEY('e'):
+      editorCreateSnapshot();
       editorDecorateWord(c);
       break;
 
@@ -896,6 +906,7 @@ void editorProcessKeypress() {
       break;
 
     default:
+      editorCreateSnapshot();
       editorInsertChar(c);
       break;
  
@@ -928,8 +939,8 @@ void editorProcessKeypress() {
       break;
 
     case 's':
-     for (int i = 0; i < E.repeat; i++){
-      editorDelChar();}
+      editorCreateSnapshot();
+      for (int i = 0; i < E.repeat; i++) editorDelChar();
       E.command[0] = '\0';
       E.repeat = 1;
       E.mode = 1;
@@ -937,8 +948,8 @@ void editorProcessKeypress() {
       return;
 
     case 'x':
-     for (int i = 0; i < E.repeat; i++){
-      editorDelChar();}
+      editorCreateSnapshot();
+      for (int i = 0; i < E.repeat; i++) editorDelChar();
       E.command[0] = '\0';
       E.repeat = 1;
       return;
@@ -948,6 +959,7 @@ void editorProcessKeypress() {
       return;
 
     case '~':
+      editorCreateSnapshot();
       editorChangeCase();
       E.command[0] = '\0';
       E.repeat = 1;
@@ -975,7 +987,7 @@ void editorProcessKeypress() {
       return;
 
     case 'w':
-      if (E.command[0] == '\0') { //This probably needs to be generalized but makes sure 'd$' works
+      if (E.command[0] == '\0') { //This probably needs to be generalized but makes sure 'dw' works
         editorMoveNextWord();
         E.command[0] = '\0';
         E.repeat = 1;
@@ -990,10 +1002,13 @@ void editorProcessKeypress() {
       return;
 
     case 'e':
-      editorMoveEndWord();
-      E.command[0] = '\0';
-      E.repeat = 1;
-      return;
+      if (E.command[0] == '\0') { //This probably needs to be generalized but makes sure 'de' works
+        editorMoveEndWord();
+        E.command[0] = '\0';
+        E.repeat = 1;
+        return;
+        }
+      break;
 
     case '0':
       E.cx = 0;
@@ -1019,6 +1034,7 @@ void editorProcessKeypress() {
       return;
 
     case 'o':
+      editorCreateSnapshot();
       E.cx = 0;
       editorInsertNewline(1);
       E.mode = 1;
@@ -1028,6 +1044,7 @@ void editorProcessKeypress() {
       return;
 
     case 'O':
+      editorCreateSnapshot();
       E.cx = 0;
       editorInsertNewline(0);
       E.mode = 1;
@@ -1067,6 +1084,7 @@ void editorProcessKeypress() {
       return;
 
     case 'p':  
+      editorCreateSnapshot();
       if (strlen(string_buffer)) editorPasteString();
       else editorPasteLine();
       E.command[0] = '\0';
@@ -1095,6 +1113,7 @@ void editorProcessKeypress() {
     case CTRL_KEY('b'):
     case CTRL_KEY('i'):
     case CTRL_KEY('e'):
+      editorCreateSnapshot();
       editorDecorateWord(c);
       return;
 
@@ -1113,7 +1132,6 @@ void editorProcessKeypress() {
 
 // for testing purposes I am using CTRL-h in normal mode
     case CTRL_KEY('h'):
-      //getcharundercursor(); 
       editorMarkupLink(); 
       return;
 
@@ -1135,17 +1153,38 @@ void editorProcessKeypress() {
   switch (keyfromstring(E.command)) {
     
     case C_daw:
-     for (int i = 0; i < E.repeat; i++){
-      editorDelWord();}
+      editorCreateSnapshot();
+      for (int i = 0; i < E.repeat; i++) editorDelWord();
+      E.command[0] = '\0';
+      E.repeat = 1;
+      return;
+
+    case C_dw:
+      editorCreateSnapshot();
+      start = E.cx;
+      editorMoveEndWord();
+      end = E.cx;
+      E.cx = start;
+      for (int j = 0; j < end - start + 2; j++) editorDelChar();
+      E.command[0] = '\0';
+      E.repeat = 1;
+      return;
+
+    case C_de:
+      editorCreateSnapshot();
+      start = E.cx;
+      editorMoveEndWord();
+      end = E.cx;
+      E.cx = start;
+      for (int j = 0; j < end - start + 1; j++) editorDelChar();
       E.command[0] = '\0';
       E.repeat = 1;
       return;
 
     case C_dd:
+      editorCreateSnapshot();
       editorYankLine(E.repeat);
-     for (int i = 0; i < E.repeat; i++){
-      //editorYankLine(1);
-      editorDelRow(E.cy);}
+      for (int i = 0; i < E.repeat; i++) editorDelRow(E.cy);
       E.cx = 0;
       E.command[0] = '\0';
       E.repeat = 1;
@@ -1155,9 +1194,22 @@ void editorProcessKeypress() {
       editorDeleteToEndOfLine();
       return;
 
+    case C_cw:
+      editorCreateSnapshot();
+      start = E.cx;
+      editorMoveEndWord();
+      end = E.cx;
+      E.cx = start;
+      for (int j = 0; j < end - start + 1; j++) editorDelChar();
+      E.command[0] = '\0';
+      E.repeat = 1;
+      E.mode = 1;
+      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+      return;
+
     case C_caw:
-     for (int i = 0; i < E.repeat; i++){
-      editorDelWord();}
+      editorCreateSnapshot();
+      for (int i = 0; i < E.repeat; i++) editorDelWord();
       E.command[0] = '\0';
       E.repeat = 1;
       E.mode = 1;
@@ -1165,6 +1217,7 @@ void editorProcessKeypress() {
       return;
 
     case C_indent:
+      editorCreateSnapshot();
       for ( i = 0; i < E.repeat; i++ ) {
         editorIndentRow();
         E.cy++;}
@@ -1174,6 +1227,7 @@ void editorProcessKeypress() {
       return;
 
     case C_unindent:
+      editorCreateSnapshot();
       for ( i = 0; i < E.repeat; i++ ) {
         editorUnIndentRow();
         E.cy++;}
@@ -1304,6 +1358,7 @@ void editorProcessKeypress() {
       return;
 
     case 'x':
+      editorCreateSnapshot();
       E.repeat = E.highlight[1] - E.highlight[0] + 1;
       E.cy = E.highlight[0];
       editorYankLine(E.repeat);
@@ -1328,6 +1383,7 @@ void editorProcessKeypress() {
       return;
 
     case '>':
+      editorCreateSnapshot();
       E.repeat = E.highlight[1] - E.highlight[0] + 1;
       E.cy = E.highlight[0];
       for ( i = 0; i < E.repeat; i++ ) {
@@ -1341,6 +1397,7 @@ void editorProcessKeypress() {
       return;
 
     case '<':
+      editorCreateSnapshot();
       E.repeat = E.highlight[1] - E.highlight[0] + 1;
       E.cy = E.highlight[0];
       for ( i = 0; i < E.repeat; i++ ) {
@@ -1383,6 +1440,7 @@ void editorProcessKeypress() {
       return;
 
     case 'x':
+      editorCreateSnapshot();
       E.repeat = E.highlight[1] - E.highlight[0] + 1;
       E.cx = E.highlight[0];
       editorYankString(); 
@@ -1410,6 +1468,7 @@ void editorProcessKeypress() {
     case CTRL_KEY('b'):
     case CTRL_KEY('i'):
     case CTRL_KEY('e'):
+      editorCreateSnapshot();
       editorDecorateVisual(c);
       E.command[0] = '\0';
       E.repeat = 1;
@@ -1428,6 +1487,7 @@ void editorProcessKeypress() {
       return;
     }
   } else if (E.mode == 5) {
+      editorCreateSnapshot();
       editorDelChar();
       editorInsertChar(c);
       E.repeat = 1;
@@ -1839,9 +1899,9 @@ void initEditor() {
   E.coloff = 0;  //col the user is currently scrolled to  
   E.numrows = 0; //number of rows of text
   E.row = NULL; //pointer to the erow structure 'array'
-  E.prev_numrows = 0; //number of rows of text
-  E.prev_row = NULL;
-  E.dirty = 0;
+  E.prev_numrows = 0; //number of rows of text in snapshot
+  E.prev_row = NULL; //prev_row is pointer to snapshot for undoing
+  E.dirty = 0; //has filed changed since last save
   E.filename = NULL;
   E.statusmsg[0] = '\0'; // inital statusmsg is ""
   E.statusmsg_time = 0;
@@ -1850,7 +1910,7 @@ void initEditor() {
   E.command[0] = '\0';
   E.repeat = 1; //number of times to repeat commands like x,s,yy also used for visual line mode x,y
   E.indent = 4;
-  E.smartindent = 1;
+  E.smartindent = 1; //CTRL-z toggles - don't want on what pasting from outside source
 
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
   E.screenrows -= 2;
@@ -1863,25 +1923,23 @@ int main(int argc, char *argv[]) {
     editorOpen(argv[1]);
   }
 
-  //I added the else - inserts text when no file is being read
+  // for testing purposes added the else - inserts text for testing purposes 
+  // when no file is being read
   else {
-    editorInsertRow(E.numrows, "Hello, Steve!", 13); //slz adds
+    editorInsertRow(E.numrows, "Hello, Steve!", 13); 
     E.cx = E.row[E.cy].size; //put cursor at end of line
-    editorInsertNewline(1); //slz adds 
-    editorInsertRow(E.numrows, "http://www.webmd.com", 20); //slz adds
-    editorInsertRow(E.numrows, "abc def ghi", 11); //slz adds
+    editorInsertNewline(1); 
+    editorInsertRow(E.numrows, "http://www.webmd.com", 20); //testing url markup
+    editorInsertRow(E.numrows, "abc def ghi", 11); 
     E.cy = 2; //puts cursor at end of line above
   }
 
   //editorSetMessage("HELP: Ctrl-S = save | Ctrl-Q = quit"); //slz commented this out
-  editorSetMessage("rows: %d  cols: %d", E.screenrows, E.screencols); //this works prints rows: 43  cols: 159
+  editorSetMessage("rows: %d  cols: %d", E.screenrows, E.screencols); //for display screen dimens
 
   while (1) {
-    editorRefreshScreen(); //screen is refreshed after every key press
-    // would think that before the keypress you would set E.prev_row = memcopy E.row
+    editorRefreshScreen(); //screen is refreshed after every key press - need to be smarter
     editorProcessKeypress();
-    //editorSetMessage("row: %d  col: %d size: %d", E.cy, E.cx, E.row[E.cy].size); //shows row and column
   }
-
   return 0;
 }
