@@ -1160,6 +1160,7 @@ void editorProcessKeypress() {
       return;
 
     case C_dw:
+      // not right if on last letter of word (deletes next word) but probably won't fix
       editorCreateSnapshot();
       start = E.cx;
       editorMoveEndWord();
@@ -1175,8 +1176,9 @@ void editorProcessKeypress() {
       start = E.cx;
       editorMoveEndWord();
       end = E.cx;
-      E.cx = start;
+      E.cx = start; 
       for (int j = 0; j < end - start + 1; j++) editorDelChar();
+      E.cx = (start < E.row[E.cy].size) ? start : E.row[E.cy].size -1;
       E.command[0] = '\0';
       E.repeat = 1;
       return;
