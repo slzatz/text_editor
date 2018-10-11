@@ -915,10 +915,21 @@ void editorProcessKeypress() {
  } else if (E.mode == 0){
  
   /*leading digit is a multiplier*/
-  if (c > 48 && c < 58) {
-  //if (isdigit(c)) { //don't want to catch 0
-    E.repeat = c - 48;
-    return;}
+  if (isdigit(c)) { //equiv to if (c > 47 && c < 58) 
+    if ( E.repeat == 0 ){
+
+      if ( c != 48 ) { //if c = 48 = 0 then it falls through to 0 more to beginning of line
+        E.repeat = c - 48;
+        return;
+      }  
+
+    } else { 
+      E.repeat = E.repeat*10 + c - 48;
+      return;
+    }
+  }
+
+  if ( E.repeat == 0 ) E.repeat = 1;
 
   switch (c) {
 
@@ -926,7 +937,7 @@ void editorProcessKeypress() {
       if (E.command[0] == '\0') { //This probably needs to be generalized but makes sure 'd$' works
         E.mode = 1;
         E.command[0] = '\0';
-        E.repeat = 1;
+        E.repeat = 0;
         editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       return;
       }
@@ -936,7 +947,7 @@ void editorProcessKeypress() {
       editorCreateSnapshot();
       for (int i = 0; i < E.repeat; i++) editorDelChar();
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       E.mode = 1;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
       return;
@@ -945,7 +956,7 @@ void editorProcessKeypress() {
       editorCreateSnapshot();
       for (int i = 0; i < E.repeat; i++) editorDelChar();
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       return;
     
     case 'r':
@@ -956,7 +967,7 @@ void editorProcessKeypress() {
       editorCreateSnapshot();
       editorChangeCase();
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       return;
 
     case 'a':
@@ -964,7 +975,7 @@ void editorProcessKeypress() {
         E.mode = 1; //this has to go here for MoveCursor to work right at EOLs
         editorMoveCursor(ARROW_RIGHT);
         E.command[0] = '\0';
-        E.repeat = 1;
+        E.repeat = 0;
         editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       return;
       }
@@ -975,7 +986,7 @@ void editorProcessKeypress() {
       E.mode = 1; //needs to be here for movecursor to work at EOLs
       editorMoveCursor(ARROW_RIGHT);
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       E.mode = 1;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       return;
@@ -984,7 +995,7 @@ void editorProcessKeypress() {
       if (E.command[0] == '\0') { //This probably needs to be generalized but makes sure 'dw' works
         editorMoveNextWord();
         E.command[0] = '\0';
-        E.repeat = 1;
+        E.repeat = 0;
         return;
       }
       break;
@@ -992,14 +1003,14 @@ void editorProcessKeypress() {
     case 'b':
       editorMoveBeginningWord();
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       return;
 
     case 'e':
       if (E.command[0] == '\0') { //This probably needs to be generalized but makes sure 'de' works
         editorMoveEndWord();
         E.command[0] = '\0';
-        E.repeat = 1;
+        E.repeat = 0;
         return;
         }
       break;
@@ -1007,14 +1018,14 @@ void editorProcessKeypress() {
     case '0':
       E.cx = 0;
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       return;
 
     case '$':
       if (E.command[0] == '\0') { //This probably needs to be generalized but makes sure 'd$' works
         editorMoveCursorEOL();
         E.command[0] = '\0';
-        E.repeat = 1;
+        E.repeat = 0;
         return;
       }
       break;
@@ -1023,7 +1034,7 @@ void editorProcessKeypress() {
       E.cx = editorIndentAmount(E.cy);
       E.mode = 1;
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       return;
 
@@ -1033,7 +1044,7 @@ void editorProcessKeypress() {
       editorInsertNewline(1);
       E.mode = 1;
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       return;
 
@@ -1043,7 +1054,7 @@ void editorProcessKeypress() {
       editorInsertNewline(0);
       E.mode = 1;
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       return;
 
@@ -1051,7 +1062,7 @@ void editorProcessKeypress() {
       E.cx = 0;
       E.cy = E.numrows-1;
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       return;
   
     case ':':
@@ -1064,7 +1075,7 @@ void editorProcessKeypress() {
     case 'V':
       E.mode = 3;
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       E.highlight[0] = E.highlight[1] = E.cy;
       editorSetMessage("\x1b[1m-- VISUAL LINE --\x1b[0m");
       return;
@@ -1072,7 +1083,7 @@ void editorProcessKeypress() {
     case 'v':
       E.mode = 4;
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       E.highlight[0] = E.highlight[1] = E.cx;
       editorSetMessage("\x1b[1m-- VISUAL --\x1b[0m");
       return;
@@ -1082,7 +1093,7 @@ void editorProcessKeypress() {
       if (strlen(string_buffer)) editorPasteString();
       else editorPasteLine();
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       return;
 
     case '*':  
@@ -1121,7 +1132,7 @@ void editorProcessKeypress() {
     case 'l':
       editorMoveCursor(c);
       E.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
-      E.repeat = 1;
+      E.repeat = 0;
       return;
 
 // for testing purposes I am using CTRL-h in normal mode
@@ -1132,7 +1143,7 @@ void editorProcessKeypress() {
     case '\x1b':
     // Leave in E.mode = 0 -> normal mode
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       return;
   }
 
@@ -1150,7 +1161,7 @@ void editorProcessKeypress() {
       editorCreateSnapshot();
       for (int i = 0; i < E.repeat; i++) editorDelWord();
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       return;
 
     case C_dw:
@@ -1162,7 +1173,7 @@ void editorProcessKeypress() {
       E.cx = start;
       for (int j = 0; j < end - start + 2; j++) editorDelChar();
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       return;
 
     case C_de:
@@ -1174,7 +1185,7 @@ void editorProcessKeypress() {
       for (int j = 0; j < end - start + 1; j++) editorDelChar();
       E.cx = (start < E.row[E.cy].size) ? start : E.row[E.cy].size -1;
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       return;
 
     case C_dd:
@@ -1187,7 +1198,7 @@ void editorProcessKeypress() {
       }
       E.cx = 0;
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       return;
 
     case C_d$:
@@ -1202,7 +1213,7 @@ void editorProcessKeypress() {
       E.cx = start;
       for (int j = 0; j < end - start + 1; j++) editorDelChar();
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       E.mode = 1;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       return;
@@ -1211,7 +1222,7 @@ void editorProcessKeypress() {
       editorCreateSnapshot();
       for (int i = 0; i < E.repeat; i++) editorDelWord();
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       E.mode = 1;
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       return;
@@ -1223,7 +1234,7 @@ void editorProcessKeypress() {
         E.cy++;}
       E.cy-=i;
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       return;
 
     case C_unindent:
@@ -1233,20 +1244,20 @@ void editorProcessKeypress() {
         E.cy++;}
       E.cy-=i;
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       return;
 
     case C_gg:
      E.cx = 0;
      E.cy = E.repeat-1;
      E.command[0] = '\0';
-     E.repeat = 1;
+     E.repeat = 0;
      return;
 
    case C_yy:  
      editorYankLine(E.repeat);
      E.command[0] = '\0';
-     E.repeat = 1;
+     E.repeat = 0;
      return;
 
     default:
@@ -1368,7 +1379,7 @@ void editorProcessKeypress() {
       }
       E.cx = 0;
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       E.mode = 0;
       editorSetMessage("");
       return;
@@ -1378,7 +1389,7 @@ void editorProcessKeypress() {
       E.cy = E.highlight[0];
       editorYankLine(E.repeat);
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       E.mode = 0;
       editorSetMessage("");
       return;
@@ -1392,7 +1403,7 @@ void editorProcessKeypress() {
         E.cy++;}
       E.cy-=i;
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       E.mode = 0;
       editorSetMessage("");
       return;
@@ -1406,7 +1417,7 @@ void editorProcessKeypress() {
         E.cy++;}
       E.cy-=i;
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       E.mode = 0;
       editorSetMessage("");
       return;
@@ -1414,7 +1425,7 @@ void editorProcessKeypress() {
     case '\x1b':
       E.mode = 0;
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       editorSetMessage("");
       return;
 
@@ -1423,7 +1434,6 @@ void editorProcessKeypress() {
     }
 
   } else if (E.mode == 4) {
-
 
     switch (c) {
 
@@ -1451,7 +1461,7 @@ void editorProcessKeypress() {
       }
 
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       E.mode = 0;
       editorSetMessage("");
       return;
@@ -1461,7 +1471,7 @@ void editorProcessKeypress() {
       E.cx = E.highlight[0];
       editorYankString();
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       E.mode = 0;
       editorSetMessage("");
       return;
@@ -1472,7 +1482,7 @@ void editorProcessKeypress() {
       editorCreateSnapshot();
       editorDecorateVisual(c);
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       E.mode = 0;
       editorSetMessage("");
       return;
@@ -1480,7 +1490,7 @@ void editorProcessKeypress() {
     case '\x1b':
       E.mode = 0;
       E.command[0] = '\0';
-      E.repeat = 1;
+      E.repeat = 0;
       editorSetMessage("");
       return;
 
@@ -1491,11 +1501,10 @@ void editorProcessKeypress() {
       editorCreateSnapshot();
       editorDelChar();
       editorInsertChar(c);
-      E.repeat = 1;
+      E.repeat = 0;
       E.command[0] = '\0';
       E.mode = 0;
   }
-
 }
 
 /*** slz additions ***/
@@ -1909,7 +1918,7 @@ void initEditor() {
   E.highlight[0] = E.highlight[1] = -1;
   E.mode = 0; //0=normal; 1=insert; 2=command line
   E.command[0] = '\0';
-  E.repeat = 1; //number of times to repeat commands like x,s,yy also used for visual line mode x,y
+  E.repeat = 0; //number of times to repeat commands like x,s,yy also used for visual line mode x,y
   E.indent = 4;
   E.smartindent = 1; //CTRL-z toggles - don't want on what pasting from outside source
 
