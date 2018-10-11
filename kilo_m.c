@@ -310,7 +310,9 @@ void editorFreeRow(erow *row) {
 }
 
 void editorDelRow(int at) {
-  //if (at < 0 || at >= E.numrows) return;
+  //editorSetMessage("Row to delete = %d; E.numrows = %d", at, E.numrows); 
+  //if (at < 0 || at >= E.numrows) return; /orig
+  if (E.numrows == 0) return; // some calls may duplicate this guard
   editorFreeRow(&E.row[at]);
   if ( E.numrows != 1) {
     memmove(&E.row[at], &E.row[at + 1], sizeof(erow) * (E.numrows - at - 1));
@@ -320,6 +322,7 @@ void editorDelRow(int at) {
   E.numrows--;
   if (E.cy == E.numrows && E.cy > 0) E.cy--; 
   E.dirty++;
+  editorSetMessage("Row to delete = %d; E.numrows = %d", at, E.numrows); 
 }
 
 void editorRowAppendString(erow *row, char *s, size_t len) {
@@ -554,30 +557,21 @@ void editorScroll() {
   }
 }
 // "drawing" rows really means updating the ab buffer
-// if keypress was a 'u' you don't want to
-// draw the rows until you reset the rows
-// could you free(E.row) set it to equal E.prev_row and E.prev_row = NULL
 void editorDrawRows(struct abuf *ab) {
   int y;
-
-
-  //before any of the below happened could you
-  //set E.rows = E.prev_row if keystroke was 'u'
-  //and otherwise E.prev_row mallocs enought space to memcpy
-  //each char array that the E.row array of structures points to
-  //for j to numrows E.row[n] copied with a new pointer E.prev_row[n]
-
 
   for (y = 0; y < E.screenrows; y++) {
     int filerow = y + E.rowoff;
     if (filerow >= E.numrows) {
-      //abAppend(ab, "~\x1b[K", 4); 
-      //first escape is red and second erases rest of line
+    // below line doesn't work because sends you to else
+    //if (filerow >= E.numrows && filerow > 0) { //slz to not draw ~ in first row
+
+      //drawing '~' below: first escape is red and second erases rest of line
       abAppend(ab, "\x1b[31m~\x1b[K", 9); 
 
     } else {
       int len = E.row[filerow].size - E.coloff;
-      if (len < 0) len = 0;
+      //if (len < 0) len = 0; //how could this ever be true? - slz
       if (len > E.screencols) len = E.screencols;
       
       if (E.mode == 3 && filerow >= E.highlight[0] && filerow <= E.highlight[1]) {
@@ -1184,9 +1178,13 @@ void editorProcessKeypress() {
       return;
 
     case C_dd:
-      editorCreateSnapshot();
-      editorYankLine(E.repeat);
-      for (int i = 0; i < E.repeat; i++) editorDelRow(E.cy);
+      if (E.numrows != 0) {
+        int r = E.numrows - E.cy;
+        E.repeat = (r >= E.repeat) ? E.repeat : r ;
+        editorCreateSnapshot();
+        editorYankLine(E.repeat);
+        for (int i = 0; i < E.repeat ; i++) editorDelRow(E.cy);
+      }
       E.cx = 0;
       E.command[0] = '\0';
       E.repeat = 1;
@@ -1360,13 +1358,14 @@ void editorProcessKeypress() {
       return;
 
     case 'x':
-      editorCreateSnapshot();
-      E.repeat = E.highlight[1] - E.highlight[0] + 1;
-      E.cy = E.highlight[0];
-      editorYankLine(E.repeat);
+      if (E.numrows != 0) {
+        editorCreateSnapshot();
+        E.repeat = E.highlight[1] - E.highlight[0] + 1;
+        E.cy = E.highlight[0];
+        editorYankLine(E.repeat);
 
-      for (int i = 0; i < E.repeat; i++) editorDelRow(E.cy);
-      
+        for (int i = 0; i < E.repeat; i++) editorDelRow(E.cy);
+      }
       E.cx = 0;
       E.command[0] = '\0';
       E.repeat = 1;
