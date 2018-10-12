@@ -132,6 +132,7 @@ void editorYankString();
 void editorMoveCursorEOL();
 void editorMoveBeginningWord();
 void editorMoveEndWord(); 
+void editorMoveEndWord2(); //not 'e' but just moves to end of word even if on last letter
 void editorMoveNextWord();
 void editorMarkupLink();
 void getWordUnderCursor();
@@ -412,9 +413,13 @@ void editorDelChar() {
   /* row size = 1 means there is 1 char; size 0 means 0 chars */
   /* Note that row->size does not count the terminating '\0' char*/
   if (E.cx == 0 && row->size == 0) return; 
-
+  if (E.cx >= row->size) {
+    E.cx = row->size - 1;
+    return;
+  }
     memmove(&row->chars[E.cx], &row->chars[E.cx + 1], row->size - E.cx);
     row->size--;
+    if (E.cx >= row->size) E.cx = row->size -1;
     E.dirty++;
 }
 
@@ -965,7 +970,8 @@ void editorProcessKeypress() {
 
     case '~':
       editorCreateSnapshot();
-      editorChangeCase();
+      for (int i = 0; i < E.repeat; i++) editorChangeCase();
+      //editorChangeCase();
       E.command[0] = '\0';
       E.repeat = 0;
       return;
@@ -1165,13 +1171,14 @@ void editorProcessKeypress() {
       return;
 
     case C_dw:
-      // not right if on last letter of word (deletes next word) but probably won't fix
       editorCreateSnapshot();
-      start = E.cx;
-      editorMoveEndWord();
-      end = E.cx;
-      E.cx = start;
-      for (int j = 0; j < end - start + 2; j++) editorDelChar();
+      for (int j = 0; j < E.repeat; j++) {
+        start = E.cx;
+        editorMoveEndWord2();
+        end = E.cx;
+        E.cx = start;
+        for (int j = 0; j < end - start + 2; j++) editorDelChar();
+      }
       E.command[0] = '\0';
       E.repeat = 0;
       return;
@@ -1179,7 +1186,7 @@ void editorProcessKeypress() {
     case C_de:
       editorCreateSnapshot();
       start = E.cx;
-      editorMoveEndWord();
+      editorMoveEndWord(); //correct one to use to emulate vim
       end = E.cx;
       E.cx = start; 
       for (int j = 0; j < end - start + 1; j++) editorDelChar();
@@ -1202,7 +1209,19 @@ void editorProcessKeypress() {
       return;
 
     case C_d$:
+      editorCreateSnapshot();
       editorDeleteToEndOfLine();
+      E.cy++;
+      if (E.numrows != 0) {
+        int r = E.numrows - E.cy;
+        E.repeat--;
+        E.repeat = (r >= E.repeat) ? E.repeat : r ;
+        //editorYankLine(E.repeat);
+        for (int i = 0; i < E.repeat ; i++) editorDelRow(E.cy);
+      }
+      //E.cx = 0;
+      E.command[0] = '\0';
+      E.repeat = 0;
       return;
 
     case C_cw:
@@ -1499,8 +1518,12 @@ void editorProcessKeypress() {
     }
   } else if (E.mode == 5) {
       editorCreateSnapshot();
-      editorDelChar();
-      editorInsertChar(c);
+      for (int i = 0; i < E.repeat; i++) {
+        editorDelChar();
+        editorInsertChar(c);
+      }
+      //editorDelChar();
+      //editorInsertChar(c);
       E.repeat = 0;
       E.command[0] = '\0';
       E.mode = 0;
@@ -1679,11 +1702,31 @@ void editorMoveCursorEOL() {
   E.cx = E.row[E.cy].size - 1; 
 }
 
-void editorMoveNextWord() {
+// not same as 'e' but moves to end of word or stays put if already on end of word
+void editorMoveEndWord2() {
   int j;
   erow row = E.row[E.cy];
-  editorMoveEndWord();
+
   for (j = E.cx + 1; j < row.size ; j++) {
+    if (row.chars[j] < 48) break;
+  }
+
+  E.cx = j - 1;
+}
+
+void editorMoveNextWord() {
+  // below is same is editorMoveEndWord2
+  int j;
+  erow row = E.row[E.cy];
+
+  for (j = E.cx + 1; j < row.size ; j++) {
+    if (row.chars[j] < 48) break;
+  }
+
+  E.cx = j - 1;
+  // end editorMoveEndWord2
+
+  for (j = E.cx + 1; j < row.size ; j++) { //+1
     if (row.chars[j] > 48) break;
   }
   E.cx = j;
