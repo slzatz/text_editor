@@ -1226,11 +1226,13 @@ void editorProcessKeypress() {
 
     case C_cw:
       editorCreateSnapshot();
-      start = E.cx;
-      editorMoveEndWord();
-      end = E.cx;
-      E.cx = start;
-      for (int j = 0; j < end - start + 1; j++) editorDelChar();
+      for (int j = 0; j < E.repeat; j++) {
+        start = E.cx;
+        editorMoveEndWord();
+        end = E.cx;
+        E.cx = start;
+        for (int j = 0; j < end - start + 1; j++) editorDelChar();
+      }
       E.command[0] = '\0';
       E.repeat = 0;
       E.mode = 1;
@@ -1983,7 +1985,7 @@ int main(int argc, char *argv[]) {
     E.cx = E.row[E.cy].size; //put cursor at end of line
     editorInsertNewline(1); 
     editorInsertRow(E.numrows, "http://www.webmd.com", 20); //testing url markup
-    editorInsertRow(E.numrows, "abc def ghi", 11); 
+    editorInsertRow(E.numrows, "The quick brown fox jumps over the lazy dog", 43); 
     E.cy = 2; //puts cursor at end of line above
   }
 
