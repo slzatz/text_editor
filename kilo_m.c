@@ -1216,14 +1216,14 @@ void editorProcessKeypress() {
         int r = E.numrows - E.cy;
         E.repeat--;
         E.repeat = (r >= E.repeat) ? E.repeat : r ;
-        //editorYankLine(E.repeat);
+        //editorYankLine(E.repeat); //b/o 2 step won't really work right
         for (int i = 0; i < E.repeat ; i++) editorDelRow(E.cy);
       }
-      //E.cx = 0;
       E.command[0] = '\0';
       E.repeat = 0;
       return;
 
+    //tested with repeat on one line
     case C_cw:
       editorCreateSnapshot();
       for (int j = 0; j < E.repeat; j++) {
@@ -1239,6 +1239,7 @@ void editorProcessKeypress() {
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       return;
 
+    //tested with repeat on one line
     case C_caw:
       editorCreateSnapshot();
       for (int i = 0; i < E.repeat; i++) editorDelWord();
