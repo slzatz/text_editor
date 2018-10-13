@@ -64,8 +64,8 @@ struct editorConfig {
   int rx; //index into the render field - only nec b/o tabs
   int rowoff; //row the user is currently scrolled to
   int coloff; //column user is currently scrolled to
-  int screenrows; //number of rows and columns in the display
-  int screencols;  //number of rows and columns in the display
+  int screenrows; //number of rows in the display
+  int screencols;  //number of columns in the display
   int numrows; // the number of rows of text so last text row is always row numrows
   erow *row; //(e)ditorrow stores a pointer to a contiguous collection of erow structures 
   int prev_numrows; // the number of rows of text so last text row is always row numrows
@@ -315,7 +315,7 @@ void editorDelRow(int at) {
   //if (at < 0 || at >= E.numrows) return; /orig
   if (E.numrows == 0) return; // some calls may duplicate this guard
   editorFreeRow(&E.row[at]);
-  if ( E.numrows != 1) {
+  if ( E.numrows != 1) { 
     memmove(&E.row[at], &E.row[at + 1], sizeof(erow) * (E.numrows - at - 1));
   } else {
     E.row = NULL;
@@ -323,7 +323,7 @@ void editorDelRow(int at) {
   E.numrows--;
   if (E.cy == E.numrows && E.cy > 0) E.cy--; 
   E.dirty++;
-  editorSetMessage("Row to delete = %d; E.numrows = %d", at, E.numrows); 
+  editorSetMessage("Row deleted = %d; E.numrows after deletion = %d E.cx = %d", at, E.numrows, E.cx); 
 }
 
 void editorRowAppendString(erow *row, char *s, size_t len) {
@@ -370,6 +370,9 @@ void editorInsertChar(int c) {
 
 /* uses VLA */
 void editorInsertNewline(int direction) {
+  if (E.numrows == 0) {
+    editorInsertRow(E.numrows, "", 0); //editorInsertRow will also insert another '\0'
+  }
   erow *row = &E.row[E.cy];
   int i;
   if (E.cx == 0 || E.cx == row->size) {
@@ -562,21 +565,33 @@ void editorScroll() {
   }
 }
 // "drawing" rows really means updating the ab buffer
+// filerow conceptually is the row/column of the written to file text
 void editorDrawRows(struct abuf *ab) {
   int y;
 
   for (y = 0; y < E.screenrows; y++) {
     int filerow = y + E.rowoff;
-    if (filerow >= E.numrows) {
-    // below line doesn't work because sends you to else
-    //if (filerow >= E.numrows && filerow > 0) { //slz to not draw ~ in first row
+    if (filerow >= E.numrows) { //original
+    //if (filerow && filerow >= E.numrows) {
 
       //drawing '~' below: first escape is red and second erases rest of line
-      abAppend(ab, "\x1b[31m~\x1b[K", 9); 
+      //may not be worth this if else to not draw ~ in first row
+      //and probably there is a better way to do it
+      if (filerow) abAppend(ab, "\x1b[31m~\x1b[K", 9); 
+      else abAppend(ab, "\x1b[K", 3); 
 
     } else {
+
+      // len is how many characters of a given line will be seen given
+      // that a long line may have caused the display to scroll
       int len = E.row[filerow].size - E.coloff;
-      //if (len < 0) len = 0; //how could this ever be true? - slz
+
+      // below means when you scrolled far because of a long line
+      // then you are going to draw nothing as opposed to negative characters
+      // the line is very necessary or we segfault
+      if (len < 0) len = 0; 
+
+      // below says that if a line is long you only draw what fits on the screen
       if (len > E.screencols) len = E.screencols;
       
       if (E.mode == 3 && filerow >= E.highlight[0] && filerow <= E.highlight[1]) {
@@ -1536,6 +1551,7 @@ void editorProcessKeypress() {
 /*** slz additions ***/
 
 void editorCreateSnapshot() {
+  if ( E.numrows == 0 ) return; //added with no thought 10-13-1018
   for (int j = 0 ; j < E.prev_numrows ; j++ ) {
     free(E.prev_row[j].chars);
   }
