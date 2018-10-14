@@ -277,11 +277,11 @@ int getWindowSize(int *rows, int *cols) {
 
 //at is the row number of the row to insert
 void editorInsertRow(int at, char *s, size_t len) {
-  if (at < 0 || at > E.numrows) return;
+  //if (at < 0 || at > E.numrows) return;//orig
 
   /*E.row is a pointer to an array of erow structures
   The array of erows that E.row points to needs to have its memory enlarged when
-  you add a row. Note that erow structues are just a size and a pointer*/
+  you add a row. Note that erow structues are just a size and a char pointer*/
 
   E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
 
@@ -297,7 +297,7 @@ void editorInsertRow(int at, char *s, size_t len) {
 
   memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * (E.numrows - at));
 
-  // section below nice - creates an erow struct for the new row
+  // section below creates an erow struct for the new row
   E.row[at].size = len;
   E.row[at].chars = malloc(len + 1);
   memcpy(E.row[at].chars, s, len);
@@ -323,7 +323,7 @@ void editorDelRow(int at) {
   E.numrows--;
   if (E.cy == E.numrows && E.cy > 0) E.cy--; 
   E.dirty++;
-  editorSetMessage("Row deleted = %d; E.numrows after deletion = %d E.cx = %d", at, E.numrows, E.cx); 
+  //editorSetMessage("Row deleted = %d; E.numrows after deletion = %d E.cx = %d E.row[at].size = %d", at, E.numrows, E.cx, E.row[at].size); 
 }
 
 void editorRowAppendString(erow *row, char *s, size_t len) {
@@ -346,8 +346,13 @@ void editorRowDelChar(erow *row, int at) {
 
 /*** editor operations ***/
 void editorInsertChar(int c) {
-  if (E.cy == E.numrows) {
-    editorInsertRow(E.numrows, "", 0); //editorInsertRow will also insert another '\0'
+
+  // E.cy == E.numrows when you start program or delete all lines
+  // not sure this can ever be true otherwise so
+  // will test just E.numrows == 0
+  //if (E.cy == E.numrows) {
+  if ( E.numrows == 0 ) {
+    editorInsertRow(0, "", 0); //editorInsertRow will also insert another '\0'
   }
 
   erow *row = &E.row[E.cy];
@@ -410,20 +415,26 @@ void editorInsertNewline(int direction) {
 }
 
 void editorDelChar() {
-  if (E.cy == E.numrows) return;
   erow *row = &E.row[E.cy];
 
   /* row size = 1 means there is 1 char; size 0 means 0 chars */
   /* Note that row->size does not count the terminating '\0' char*/
-  if (E.cx == 0 && row->size == 0) return; 
-  if (E.cx >= row->size) {
-    E.cx = row->size - 1;
-    return;
+  // note below order important because row->size undefined if E.numrows = 0 because E.row is NULL
+  if (E.numrows == 0 || row->size == 0 ) return; 
+
+  memmove(&row->chars[E.cx], &row->chars[E.cx + 1], row->size - E.cx);
+  row->size--;
+
+  if (E.numrows == 1 && row->size == 0) {
+    E.numrows = 0;
+    free(E.row);
+    //editorFreeRow(&E.row[at]);
+    E.row = NULL;
   }
-    memmove(&row->chars[E.cx], &row->chars[E.cx + 1], row->size - E.cx);
-    row->size--;
-    if (E.cx >= row->size) E.cx = row->size -1;
-    E.dirty++;
+  else if (E.cx == row->size && E.cx) E.cx = row->size - 1; 
+
+  E.dirty++;
+
 }
 
 void editorBackspace() {
@@ -909,6 +920,7 @@ void editorProcessKeypress() {
     case '\x1b':
       E.mode = 0;
       if (E.cx > 0) E.cx--;
+      // below - if the indent amount == size of line then it's all blanks
       int n = editorIndentAmount(E.cy);
       if (n == E.row[E.cy].size) {
         E.cx = 0;
@@ -917,12 +929,12 @@ void editorProcessKeypress() {
         }
       }
       editorSetMessage("");
-      break;
+      return;
 
     default:
       editorCreateSnapshot();
       editorInsertChar(c);
-      break;
+      return;
  
  } 
   quit_times = KILO_QUIT_TIMES;
@@ -1314,63 +1326,63 @@ void editorProcessKeypress() {
       editorSetMessage(""); 
       return;}
 
-      if (c == '\r') {
-        if (E.command[1] == 'w') {
-          if (strlen(E.command) > 3) {
-            E.filename = strdup(&E.command[3]);
+    if (c == '\r') {
+      if (E.command[1] == 'w') {
+        if (strlen(E.command) > 3) {
+          E.filename = strdup(&E.command[3]);
+          editorSave();
+          editorSetMessage("\"%s\" written", E.filename);
+        }
+        else if (E.filename != NULL) {
             editorSave();
             editorSetMessage("\"%s\" written", E.filename);
-          }
-          else if (E.filename != NULL) {
-              editorSave();
-              editorSetMessage("\"%s\" written", E.filename);
-          }
-          else editorSetMessage("No file name");
-
-          E.mode = 0;
-          E.command[0] = '\0';
         }
+        else editorSetMessage("No file name");
 
-        if (E.command[1] == 'x') {
-          if (strlen(E.command) > 3) {
-            E.filename = strdup(&E.command[3]);
-            editorSave();
+        E.mode = 0;
+        E.command[0] = '\0';
+      }
+
+      else if (E.command[1] == 'x') {
+        if (strlen(E.command) > 3) {
+          E.filename = strdup(&E.command[3]);
+          editorSave();
+          write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+          write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
+          exit(0);
+        }
+        else if (E.filename != NULL) {
+          editorSave();
+          write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+          write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
+          exit(0);
+        }
+        else editorSetMessage("No file name");
+
+        E.mode = 0;
+        E.command[0] = '\0';
+      }
+
+      else if (E.command[1] == 'q') {
+        if (E.dirty) {
+          if (strlen(E.command) == 3 && E.command[2] == '!') {
             write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
             write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
             exit(0);
-          }
-          else if (E.filename != NULL) {
-            editorSave();
-            write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-            write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
-            exit(0);
-          }
-          else editorSetMessage("No file name");
-
-          E.mode = 0;
-          E.command[0] = '\0';
-        }
-
-        if (E.command[1] == 'q') {
-          if (E.dirty) {
-            if (strlen(E.command) == 3 && E.command[2] == '!') {
-              write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-              write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
-              exit(0);
-            }  
-            else {
-              E.mode = 0;
-              E.command[0] = '\0';
-              editorSetMessage("No write since last change");
-            }
-          }
-        
+          }  
           else {
-            write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-            write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
-            exit(0);
+            E.mode = 0;
+            E.command[0] = '\0';
+            editorSetMessage("No write since last change");
           }
         }
+       
+        else {
+          write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+          write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
+          exit(0);
+        }
+      }
     }
 
     else {
@@ -1646,8 +1658,8 @@ void editorPasteString() {
   E.dirty++;
 }
 
-
 void editorPasteLine(){
+  if ( E.numrows == 0 ) editorInsertRow(0, "", 0);
   for (int i=0; i < 10; i++) {
     if (line_buffer[i] == NULL) break;
 
