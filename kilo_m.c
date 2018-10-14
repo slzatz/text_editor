@@ -611,9 +611,10 @@ void editorDrawRows(struct abuf *ab) {
           abAppend(ab, "\x1b[0m", 4); //slz return background to normal
         
       } else if (E.mode == 4 && filerow == E.cy) {
-          abAppend(ab, &E.row[filerow].chars[0], E.highlight[0]);
+          abAppend(ab, &E.row[filerow].chars[0], E.highlight[0] - E.coloff);
           abAppend(ab, "\x1b[48;5;242m", 11);
-          abAppend(ab, &E.row[filerow].chars[E.highlight[0]], E.highlight[1]-E.highlight[0]);
+          abAppend(ab, &E.row[filerow].chars[E.highlight[0]], E.highlight[1]
+                                                - E.highlight[0] - E.coloff);
           abAppend(ab, "\x1b[0m", 4); //slz return background to normal
           abAppend(ab, &E.row[filerow].chars[E.highlight[1]], len - E.highlight[1]);
         
