@@ -113,7 +113,6 @@ static t_symstruct lookuptable[] = {
 
 void editorSetMessage(const char *fmt, ...);
 void editorRefreshScreen();
-//char *editorPrompt(char *prompt);
 void getcharundercursor();
 void editorDecorateWord(int c);
 void editorDecorateVisual(int c);
@@ -262,8 +261,6 @@ int getWindowSize(int *rows, int *cols) {
   struct winsize ws;
 
   if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
-    //if (write(STDOUT_FILENO, "\x1b[999C\x1b[999B", 12) != 12) return -1; \\not needed because ioctl works on arch
-    //return getCursorPosition(rows, cols);
     return -1;
   } else {
     *cols = ws.ws_col;
@@ -277,7 +274,6 @@ int getWindowSize(int *rows, int *cols) {
 
 //at is the row number of the row to insert
 void editorInsertRow(int at, char *s, size_t len) {
-  //if (at < 0 || at > E.numrows) return;//orig
 
   /*E.row is a pointer to an array of erow structures
   The array of erows that E.row points to needs to have its memory enlarged when
@@ -312,7 +308,6 @@ void editorFreeRow(erow *row) {
 
 void editorDelRow(int at) {
   //editorSetMessage("Row to delete = %d; E.numrows = %d", at, E.numrows); 
-  //if (at < 0 || at >= E.numrows) return; /orig
   if (E.numrows == 0) return; // some calls may duplicate this guard
   editorFreeRow(&E.row[at]);
   if ( E.numrows != 1) { 
@@ -347,12 +342,9 @@ void editorRowDelChar(erow *row, int at) {
 /*** editor operations ***/
 void editorInsertChar(int c) {
 
-  // E.cy == E.numrows when you start program or delete all lines
-  // not sure this can ever be true otherwise so
-  // will test just E.numrows == 0
-  //if (E.cy == E.numrows) {
+  // E.cy == E.numrows == 0 when you start program or delete all lines
   if ( E.numrows == 0 ) {
-    editorInsertRow(0, "", 0); //editorInsertRow will also insert another '\0'
+    editorInsertRow(0, "", 0); //editorInsertRow will insert '\0'
   }
 
   erow *row = &E.row[E.cy];
@@ -398,7 +390,7 @@ void editorInsertNewline(int direction) {
     editorInsertRow(E.cy + 1, &row->chars[E.cx], row->size - E.cx);
     row = &E.row[E.cy];
     row->size = E.cx;
-    row->chars[row->size] = '\0';//wouldn't row->chars[E.cx] = 0 be better
+    row->chars[row->size] = '\0';
     if (E.smartindent) i = editorIndentAmount(E.cy);
     else i = 0;
     E.cy++;
@@ -642,8 +634,8 @@ void editorDrawStatusBar(struct abuf *ab) {
   if (len > E.screencols) len = E.screencols;
   abAppend(ab, status, len);
   
-  /* pretty clever - add spaces until you just have enough room
-     left to print the rstatus message  */
+  /* add spaces until you just have enough room
+     left to print the status message  */
 
   while (len < E.screencols) {
     if (E.screencols - len == rlen) {
@@ -691,11 +683,6 @@ void editorRefreshScreen() {
   editorDrawStatusBar(&ab);
   editorDrawMessageBar(&ab);
 
-  /*abAppend(&ab, " -> ", 4);
-  char str[10];
-  sprintf(str, "%d", nn); //str is a pointer to the char array
-  abAppend(&ab, str, 3);*/
-
   // the lines below position the cursor where it should go
   if (E.mode != 2){
   char buf[32];
@@ -707,13 +694,8 @@ void editorRefreshScreen() {
 
   write(STDOUT_FILENO, ab.b, ab.len);
 
-  // could ab be memcopied into cd until mode changes from 1 to 0?
-  // could cd then be freed when mode changed from
-
   abFree(&ab);
- // nn++;
 }
-
 
 /*va_list, va_start(), and va_end() come from <stdarg.h> and vsnprintf() is
 from <stdio.h> and time() is from <time.h>.  stdarg.h allows functions to accept a
@@ -731,48 +713,6 @@ void editorSetMessage(const char *fmt, ...) {
   va_end(ap); //free a va_list
   E.statusmsg_time = time(NULL);
 }
-
-/*** input ***/
-
-/*
-
-editorPrompt has some interesting code about buffers, keys, backspaces but not in use
-
-char *editorPrompt(char *prompt) {
-  size_t bufsize = 128;
-  char *buf = malloc(bufsize);
-
-  size_t buflen = 0;
-  buf[0] = '\0';
-
-  while (1) {
-    editorSetMessage(prompt, buf);
-    editorRefreshScreen();
-
-    int c = editorReadKey();
-    if (c == DEL_KEY || c == CTRL_KEY('h') || c == BACKSPACE) {
-      if (buflen != 0) buf[--buflen] = '\0';
-    } else if (c == '\x1b') {
-      //editorSetMessage(""); //slz
-      free(buf);
-      return NULL;
-    } else if (c == '\r') {
-      if (buflen != 0) {
-        //editorSetMessage(""); //slz
-        return buf;
-      }
-    // <ctype> library function void iscntrl(int c) ctrl-m is interpreted as '\r' above
-    } else if (!iscntrl(c) && c < 128) {
-      if (buflen == bufsize - 1) {
-        bufsize *= 2;
-        buf = realloc(buf, bufsize);
-      }
-      buf[buflen++] = c;
-      buf[buflen] = '\0';
-    }
-  }
-}
-*/
 
 void editorMoveCursor(int key) {
   //erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy]; //orig - didn't thinke we needed check
@@ -824,14 +764,6 @@ void editorProcessKeypress() {
   */
 
   int c = editorReadKey();
-
-
-/**************************************** 
- * This would be a place to create prev * 
- * row                                  *
- ***************************************/
-  //if (c == 'u' || c == 'i' || c == '\x1b' || (E.mode == 0 && isdigit(c))) ;
-  //else editorCreateSnapshot();
 
 /*************************************** 
  * This is where you enter insert mode* 
@@ -1140,7 +1072,6 @@ void editorProcessKeypress() {
       return;
 
     case 'u':
-      // set some flag that says set E.row --> E.prev_row
       editorRestoreSnapshot();
       return;
 
@@ -1553,8 +1484,6 @@ void editorProcessKeypress() {
         editorDelChar();
         editorInsertChar(c);
       }
-      //editorDelChar();
-      //editorInsertChar(c);
       E.repeat = 0;
       E.command[0] = '\0';
       E.mode = 0;
@@ -1888,7 +1817,7 @@ void editorFindNextWord() {
   y = E.cy;
   x = E.cx + 1; //in case sitting on beginning of the word
  
-  /*n counter is for no matches for command 'n'*/
+  /*n counter so we can exit for loop if there are  no matches for command 'n'*/
   for ( int n=0; n < E.numrows; n++ ) {
     erow *row = &E.row[y];
     z = strstr(&(row->chars[x]), search_string);
