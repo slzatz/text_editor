@@ -73,7 +73,7 @@ struct editorConfig {
   int dirty; //file changes since last save
   char *filename;
   char statusmsg[80]; //status msg is a character array max 80 char
-  time_t statusmsg_time;
+  //time_t statusmsg_time;
   struct termios orig_termios;
   int highlight[2];
   int mode;
@@ -659,12 +659,10 @@ void editorDrawMessageBar(struct abuf *ab) {
   abAppend(ab, "\x1b[K", 3);
   int msglen = strlen(E.statusmsg);
   if (msglen > E.screencols) msglen = E.screencols;
-  if (msglen && time(NULL) - E.statusmsg_time < 1000) //time
+  //if (msglen && time(NULL) - E.statusmsg_time < 1000) //time
     abAppend(ab, E.statusmsg, msglen);
 }
 
-// this is continuously called by main
-//int nn = 0;
 void editorRefreshScreen() {
   editorScroll();
 
@@ -674,9 +672,9 @@ void editorRefreshScreen() {
     };*/
 
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
-  //"\x1b[2J" clears the screen
-  abAppend(&ab, "\x1b[?25l", 6); //b is a new pointer to "\x1b[?25l" - hides the cursor
-  abAppend(&ab, "\x1b[H", 3);  //b is a new pointer to "\x1.. + "\x1b[H=sends the cursor home
+
+  abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
+  abAppend(&ab, "\x1b[H", 3);  //sends the cursor home
 
 
   editorDrawRows(&ab);
@@ -711,11 +709,10 @@ void editorSetMessage(const char *fmt, ...) {
 
   vsnprintf(E.statusmsg, sizeof(E.statusmsg), fmt, ap);
   va_end(ap); //free a va_list
-  E.statusmsg_time = time(NULL);
+  //E.statusmsg_time = time(NULL);
 }
 
 void editorMoveCursor(int key) {
-  //erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy]; //orig - didn't thinke we needed check
 
   erow *row = &E.row[E.cy];
 
@@ -743,7 +740,6 @@ void editorMoveCursor(int key) {
 
   /* Below deals with moving cursor up and down from longer rows to shorter rows 
      row has to be calculated again because this is the new row you've landed on */
-  //row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy]; // I don't think this check is necessary
 
   row = &E.row[E.cy];
   int rowlen = row ? row->size : 0;
@@ -756,12 +752,9 @@ void editorMoveCursor(int key) {
 void editorProcessKeypress() {
   static int quit_times = KILO_QUIT_TIMES;
   int i, start, end;
-  //char ex[10] = {':', '\0'};
-  //char z[10];
 
   /* editorReadKey brings back one processed character that handles
-     escape sequences for things like navigation keys
-  */
+     escape sequences for things like navigation keys */
 
   int c = editorReadKey();
 
@@ -883,7 +876,8 @@ void editorProcessKeypress() {
   if (isdigit(c)) { //equiv to if (c > 47 && c < 58) 
     if ( E.repeat == 0 ){
 
-      if ( c != 48 ) { //if c = 48 = 0 then it falls through to 0 more to beginning of line
+      //if c = 48 => 0 then it falls through to 0 move to beginning of line
+      if ( c != 48 ) { 
         E.repeat = c - 48;
         return;
       }  
@@ -899,7 +893,9 @@ void editorProcessKeypress() {
   switch (c) {
 
     case 'i':
-      if (E.command[0] == '\0') { //This probably needs to be generalized but makes sure 'd$' works
+      //This probably needs to be generalized when a letter is a single char command
+      //but can also appear in multi-character commands too
+      if (E.command[0] == '\0') { 
         E.mode = 1;
         E.command[0] = '\0';
         E.repeat = 0;
@@ -931,13 +927,12 @@ void editorProcessKeypress() {
     case '~':
       editorCreateSnapshot();
       for (int i = 0; i < E.repeat; i++) editorChangeCase();
-      //editorChangeCase();
       E.command[0] = '\0';
       E.repeat = 0;
       return;
 
     case 'a':
-      if (E.command[0] == '\0') { //This probably needs to be generalized but makes sure 'd$' works
+      if (E.command[0] == '\0') { 
         E.mode = 1; //this has to go here for MoveCursor to work right at EOLs
         editorMoveCursor(ARROW_RIGHT);
         E.command[0] = '\0';
@@ -958,7 +953,7 @@ void editorProcessKeypress() {
       return;
 
     case 'w':
-      if (E.command[0] == '\0') { //This probably needs to be generalized but makes sure 'dw' works
+      if (E.command[0] == '\0') { 
         editorMoveNextWord();
         E.command[0] = '\0';
         E.repeat = 0;
@@ -973,7 +968,7 @@ void editorProcessKeypress() {
       return;
 
     case 'e':
-      if (E.command[0] == '\0') { //This probably needs to be generalized but makes sure 'de' works
+      if (E.command[0] == '\0') { 
         editorMoveEndWord();
         E.command[0] = '\0';
         E.repeat = 0;
@@ -988,7 +983,7 @@ void editorProcessKeypress() {
       return;
 
     case '$':
-      if (E.command[0] == '\0') { //This probably needs to be generalized but makes sure 'd$' works
+      if (E.command[0] == '\0') { 
         editorMoveCursorEOL();
         E.command[0] = '\0';
         E.repeat = 0;
@@ -1170,7 +1165,6 @@ void editorProcessKeypress() {
     case C_d$:
       editorCreateSnapshot();
       editorDeleteToEndOfLine();
-      E.cy++;
       if (E.numrows != 0) {
         int r = E.numrows - E.cy;
         E.repeat--;
@@ -1346,7 +1340,6 @@ void editorProcessKeypress() {
     case 'l':
       editorMoveCursor(c);
       E.highlight[1] = E.cy;
-      //E.command[0] = '\0'; //untested but I believe arrow should reset command
       return;
 
     case 'x':
@@ -1428,7 +1421,6 @@ void editorProcessKeypress() {
     case 'l':
       editorMoveCursor(c);
       E.highlight[1] = E.cx;
-      //E.command[0] = '\0'; //untested but I believe arrow should reset command
       return;
 
     case 'x':
@@ -1493,7 +1485,7 @@ void editorProcessKeypress() {
 /*** slz additions ***/
 
 void editorCreateSnapshot() {
-  if ( E.numrows == 0 ) return; //added with no thought 10-13-1018
+  if ( E.numrows == 0 ) return; //don't create snapshot if there is no text
   for (int j = 0 ; j < E.prev_numrows ; j++ ) {
     free(E.prev_row[j].chars);
   }
@@ -1548,7 +1540,7 @@ void editorYankLine(int n){
     memcpy(line_buffer[i], E.row[E.cy+i].chars, len);
     line_buffer[i][len] = '\0';
   }
-  // set string_buffer to "" to signal should paste line
+  // set string_buffer to "" to signal should paste line and not chars
   string_buffer[0] = '\0';
 }
 
@@ -1917,10 +1909,10 @@ void initEditor() {
   E.prev_row = NULL; //prev_row is pointer to snapshot for undoing
   E.dirty = 0; //has filed changed since last save
   E.filename = NULL;
-  E.statusmsg[0] = '\0'; // inital statusmsg is ""
-  E.statusmsg_time = 0;
+  E.statusmsg[0] = '\0'; //very bottom of screen; ex. -- INSERT --
+  //E.statusmsg_time = 0;
   E.highlight[0] = E.highlight[1] = -1;
-  E.mode = 0; //0=normal; 1=insert; 2=command line
+  E.mode = 0; //0=normal; 1=insert; 2=command line; 3=visual line; 4=visual; 5='r' 
   E.command[0] = '\0';
   E.repeat = 0; //number of times to repeat commands like x,s,yy also used for visual line mode x,y
   E.indent = 4;
@@ -1952,7 +1944,7 @@ int main(int argc, char *argv[]) {
   editorSetMessage("rows: %d  cols: %d", E.screenrows, E.screencols); //for display screen dimens
 
   while (1) {
-    editorRefreshScreen(); //screen is refreshed after every key press - need to be smarter
+    editorRefreshScreen(); 
     editorProcessKeypress();
   }
   return 0;
