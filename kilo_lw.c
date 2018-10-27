@@ -81,6 +81,7 @@ struct editorConfig {
   int repeat;
   int indent;
   int smartindent;
+  int continuation;
 };
 
 struct editorConfig E;
@@ -352,6 +353,9 @@ void editorInsertChar(int c) {
   }
 
   erow *row = &E.row[get_filerow()];
+  int fc = get_filecol();
+
+
   //if (E.cx < 0 || E.cx > row->size) E.cx = row->size; //can either of these be true? ie is check necessary?
   row->chars = realloc(row->chars, row->size + 1); //******* was size + 2
 
@@ -361,19 +365,24 @@ void editorInsertChar(int c) {
      memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * (E.filerows - at));
   */
 
-  memmove(&row->chars[get_filecol() + 1], &row->chars[get_filecol()], row->size - get_filecol()); //****was E.cx + 1
+  memmove(&row->chars[fc + 1], &row->chars[fc], row->size - fc); //****was E.cx + 1
 
   row->size++;
-  row->chars[get_filecol()] = c;
+  row->chars[fc] = c;
   E.dirty++;
-  if (E.cx >= E.screencols - 1) {
-  //if (E.cx >= E.screencols) {
-  E.cy++;
-  E.cx = 0;
-  editorMoveCursor(ARROW_RIGHT);
+
+  if (E.cx >= E.screencols - 1) { //doesn't work - might work now with some other changes
+  //if (E.cx >= E.screencols) { //almost works
+    if (row->size%E.screencols == 0) E.continuation = 1;
+    E.cy++; // these two almost work
+    E.cx = 0; // these two almost work
+    //E.continuation = 1;
+    //editorMoveCursor(ARROW_RIGHT);
   }
-  else 
-  E.cx++;
+  else {
+    E.continuation = 0;
+    E.cx++;
+  }
 }
 
 /* uses VLA */
@@ -603,8 +612,11 @@ void editorDrawRows(struct abuf *ab) {
     } else {
 
       /*new*/
-      //int lines = 1 + E.row[filerow].size/(E.screencols + 1);
-      int lines = 1 + E.row[filerow].size/(E.screencols);
+      //int lines = 1 + E.row[filerow].size/E.screencols; //+1
+      int lines = E.row[filerow].size/E.screencols;
+      if (E.row[filerow].size%E.screencols) lines++;
+      if (lines == 0) lines = 1;
+      //int lines = 1 + E.row[filerow].size/(E.screencols); //? draw newline to soon when inserting although things almost work
       for (int n=0; n<lines;n++) {
         y++;
         int start = n*E.screencols;
@@ -743,8 +755,9 @@ void editorMoveCursor(int key) {
 
     case ARROW_RIGHT:
     case 'l':
-      if (row && (get_filecol() < row->size - 1)) {   //segfaults on opening if you arrow right w/o row
-        if (E.cx > E.screencols - 1) {
+      //if (row && (get_filecol() < row->size - 1)) { 
+      if (row && (get_filecol() < row->size)) { 
+        if (E.cx >= E.screencols - 1) { // was just >
           E.cy++;
           E.cx = 0;
         } else {E.cx++;}  
@@ -766,9 +779,6 @@ void editorMoveCursor(int key) {
   /* Below deals with moving cursor up and down from longer rows to shorter rows 
      row has to be calculated again because this is the new row you've landed on */
 
-  //row = &E.row[get_filerow()];
-  //int rowlen = row->size
-  //int rowlen = row ? row->size : 0;
   int rowlen = get_length_screen_line (E.cy); 
   if (rowlen == 0) E.cx = 0;
   else if (E.mode == 1 && E.cx >= rowlen ) E.cx = rowlen ;
@@ -1511,28 +1521,45 @@ void editorProcessKeypress() {
 
 /*** slz additions ***/
 int get_filerow() {
-  int screenrow = 0;
+  int screenrow = -1;
   int n;
+  int linerows;
   if (E.cy == 0) return 0;
   //for (n=0; n < E.cy; n++) {
   for (n=0; n < E.cy+1; n++) {
-    screenrow+= 1 + E.row[n].size/(E.screencols+1);
+    linerows = E.row[n].size/E.screencols;
+    if (E.row[n].size%E.screencols) linerows++;
+    if (linerows == 0) linerows = 1;
+    screenrow+= linerows;
     if (screenrow >= E.cy) break;
   }
-  if (screenrow > E.cy) return n;
-  else return n+1;
+
+  if (E.continuation) n--;
+  return n;
+
+  //if (screenrow > E.cy) return n;
+  //else return n ;//n+1
 }
 
 int get_filerow_by_line (int y){
-  int screenrow = 0;
+  int screenrow = -1;
   int n;
+  int linerows;
   if (y == 0) return 0;
   for (n=0; n < y+1; n++) {
-    screenrow+= 1 + E.row[n].size/(E.screencols+1);
+    linerows = E.row[n].size/E.screencols;
+    if (E.row[n].size%E.screencols) linerows++;
+    if (linerows == 0) linerows = 1;
+    screenrow+= linerows;
     if (screenrow >= y) break;
   }
-  if (screenrow > y) return n;
-  else return n+1;
+
+  // turns out you only want E.continuation in get_filerow
+  //if (E.continuation) n--; ///////////////////////
+  return n;
+
+  //if (screenrow > y) return n; //n
+  //else return n  ;//n+1
 }
 
 int get_filecol() {
@@ -1542,9 +1569,12 @@ int get_filecol() {
   for (;;) {
     if (y == 0) break;
     y--;
-    if (get_filerow_by_line(y) != fr) break;
+    //if (get_filerow_by_line(y) != fr) break;
+    if (get_filerow_by_line(y) < fr) break;
     n++;
   }
+
+  //if (E.continuation) n++;
   int col = E.cx + n*E.screencols; 
   return col;
 }
@@ -2001,6 +2031,7 @@ void initEditor() {
   E.repeat = 0; //number of times to repeat commands like x,s,yy also used for visual line mode x,y
   E.indent = 4;
   E.smartindent = 1; //CTRL-z toggles - don't want on what pasting from outside source
+  E.continuation = 0; //circumstance when a line wraps
 
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
   E.screenrows -= 2;
@@ -2032,7 +2063,7 @@ int main(int argc, char *argv[]) {
   while (1) {
     editorRefreshScreen(); 
     editorProcessKeypress();
-  editorSetMessage("length = %d, E.cx = %d, E.cy = %d, filerow = %d, filecol = %d, size = %d)", get_length_screen_line (E.cy), E.cx, E.cy, get_filerow(), get_filecol(), E.row[get_filerow()].size); 
+  editorSetMessage("length = %d, E.cx = %d, E.cy = %d, filerow = %d, filecol = %d, size = %d", get_length_screen_line (E.cy), E.cx, E.cy, get_filerow(), get_filecol(), E.row[get_filerow()].size); 
   }
   return 0;
 }
