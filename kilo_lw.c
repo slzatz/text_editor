@@ -304,6 +304,14 @@ void editorInsertRow(int at, char *s, size_t len) {
   memcpy(E.row[at].chars, s, len);
   E.row[at].chars[len] = '\0'; //each line is made into a c-string (maybe for searching)
   E.filerows++;
+  /*
+  int y = E.cy;
+  for (;;) {
+    if (get_filerow_by_line(y) > at) break;   
+    if (get_filerow_by_line(y) == E.filerows - 1) break;
+    y++;
+  }
+  E.cy = y;*/
   E.dirty++;
 }
 
@@ -334,6 +342,7 @@ void editorRowAppendString(erow *row, char *s, size_t len) {
   E.dirty++;
 }
 
+/* not in use right now
 void editorRowDelChar(erow *row, int at) {
   if (at < 0 || at >= row->size) return;
   // is there any reason to realloc for one character?
@@ -343,6 +352,7 @@ void editorRowDelChar(erow *row, int at) {
   row->size--;
   E.dirty++;
 }
+*/
 
 /*** editor operations ***/
 void editorInsertChar(int c) {
@@ -371,13 +381,13 @@ void editorInsertChar(int c) {
   row->chars[fc] = c;
   E.dirty++;
 
-  if (E.cx >= E.screencols - 1) { //doesn't work - might work now with some other changes
-  //if (E.cx >= E.screencols) { //almost works
+  if (E.cx >= E.screencols - 1) { 
+    // an alternative sould just be to have E.continuation
+    // and E.continued_line = get_filerow() and just check in get_filerow for
+    //E.continuation and then return E.continued_line
     if (row->size%E.screencols == 0) E.continuation = 1;
-    E.cy++; // these two almost work
-    E.cx = 0; // these two almost work
-    //E.continuation = 1;
-    //editorMoveCursor(ARROW_RIGHT);
+    E.cy++; 
+    E.cx = 0;
   }
   else {
     E.continuation = 0;
@@ -395,7 +405,7 @@ void editorInsertNewline(int direction) {
   erow *row = &E.row[get_filerow()];
   int i;
   if (E.cx == 0 || E.cx == row->size) {
-    if (E.smartindent) i = editorIndentAmount(E.cy);
+    if (E.smartindent) i = editorIndentAmount(get_filerow());
     else i = 0;
     char spaces[i + 1]; //VLA
     for (int j=0; j<i; j++) {
@@ -405,6 +415,14 @@ void editorInsertNewline(int direction) {
     //E.cy+=direction;
     //editorInsertRow(E.cy, spaces, i);
     editorInsertRow(get_filerow()+direction, spaces, i);
+    int fr = get_filerow();
+    int y = E.cy;
+    for (;;) {
+      if (get_filerow_by_line(y) > fr) break;   
+      //if (get_filerow_by_line(y) == E.filerows - 1) break;
+      y++;
+    }
+    E.cy = y;
     E.cx = i;
     
       
@@ -416,8 +434,18 @@ void editorInsertNewline(int direction) {
     row->chars[row->size] = '\0';
     if (E.smartindent) i = editorIndentAmount(E.cy);
     else i = 0;
-    E.cy++;
-    row = &E.row[E.cy];
+
+   // E.cy++;
+
+    row = &E.row[get_filerow() + 1];
+    int fr = get_filerow();
+    int y = E.cy;
+    for (;;) {
+      if (get_filerow_by_line(y) > fr) break;   
+      //if (get_filerow_by_line(y) == E.filerows - 1) break;
+      y++;
+    }
+    E.cy = y;
     E.cx = 0;
     for (;;){
       if (row->chars[0] != ' ') break;
@@ -1726,9 +1754,9 @@ void editorUnIndentRow() {
   E.dirty++;
 }
 
-int editorIndentAmount(int y) {
+int editorIndentAmount(int fr) {
   int i;
-  erow *row = &E.row[y];
+  erow *row = &E.row[fr];
   if ( !row || row->size == 0 ) return 0; //row is NULL if the row has been deleted or opening app
 
   for ( i = 0; i < row->size; i++) {
