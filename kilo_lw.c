@@ -403,6 +403,13 @@ void editorInsertNewline(int direction) {
     return;
   }
 
+  if (get_filerow() == 0 && direction == 0) {
+    editorInsertRow(0, "", 0);
+    E.cx = 0;
+    E.cy = 0;
+    return;
+  }
+    
   erow *row = &E.row[get_filerow()];
   int i;
   if (E.cx == 0 || E.cx == row->size) {
@@ -413,20 +420,25 @@ void editorInsertNewline(int direction) {
       spaces[j] = ' ';
     }
     spaces[i] = '\0';
-    //E.cy+=direction;
-    //editorInsertRow(E.cy, spaces, i);
-    editorInsertRow(get_filerow()+direction, spaces, i);
     int fr = get_filerow();
     int y = E.cy;
-    for (;;) {
-      if (get_filerow_by_line(y) > fr) break;   
-      //if (get_filerow_by_line(y) == E.filerows - 1) break;
-      y++;
+    editorInsertRow(get_filerow()+direction, spaces, i);
+    if (direction) {
+      for (;;) {
+        if (get_filerow_by_line(y) > fr) break;   
+        y++;
+      }
+    }
+    else {
+
+      for (;;) {
+        if (get_filerow_by_line(y) < fr) break;   
+        y--;
+      }
     }
     E.cy = y;
+    if (direction == 0) E.cy++;
     E.cx = i;
-    
-      
   }
   else {
     editorInsertRow(get_filerow() + 1, &row->chars[get_filecol()], row->size - get_filecol());
@@ -1050,7 +1062,9 @@ void editorProcessKeypress() {
       break;
 
     case 'I':
-      E.cx = editorIndentAmount(E.cy);
+      editorMoveCursorBOL();
+      //E.cx = editorIndentAmount(E.cy);
+      E.cx = editorIndentAmount(get_filerow());
       E.mode = 1;
       E.command[0] = '\0';
       E.repeat = 0;
@@ -1059,7 +1073,7 @@ void editorProcessKeypress() {
 
     case 'o':
       editorCreateSnapshot();
-      E.cx = 0;
+      E.cx = 0; //editorInsertNewline needs E.cx set to zero for 'o' and 'O' before calling it
       editorInsertNewline(1);
       E.mode = 1;
       E.command[0] = '\0';
@@ -1069,7 +1083,7 @@ void editorProcessKeypress() {
 
     case 'O':
       editorCreateSnapshot();
-      E.cx = 0;
+      E.cx = 0;  //editorInsertNewline needs E.cx set to zero for 'o' and 'O' before calling it
       editorInsertNewline(0);
       E.mode = 1;
       E.command[0] = '\0';
