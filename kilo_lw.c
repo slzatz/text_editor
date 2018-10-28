@@ -130,6 +130,7 @@ void editorPasteLine();
 void editorPasteString();
 void editorYankString();
 void editorMoveCursorEOL();
+void editorMoveCursorBOL();
 void editorMoveBeginningWord();
 void editorMoveEndWord(); 
 void editorMoveEndWord2(); //not 'e' but just moves to end of word even if on last letter
@@ -1033,7 +1034,8 @@ void editorProcessKeypress() {
       break;
 
     case '0':
-      E.cx = 0;
+      //E.cx = 0;
+      editorMoveCursorBOL();
       E.command[0] = '\0';
       E.repeat = 0;
       return;
@@ -1568,7 +1570,7 @@ int get_filerow_by_line (int y){
   for (n=0; n < y+1; n++) {
     linerows = E.row[n].size/E.screencols;
     if (E.row[n].size%E.screencols) linerows++;
-    if (linerows == 0) linerows = 1;
+    if (linerows == 0) linerows = 1; // a row with no characters still takes up a line may also deal with last line
     screenrow+= linerows;
     if (screenrow >= y) break;
   }
@@ -1784,8 +1786,38 @@ void editorDeleteToEndOfLine() {
   row->chars[E.cx] = '\0';
   }
 
+void editorMoveCursorBOL() {
+  E.cx = 0;
+  int fr = get_filerow();
+  if (fr == 0) {
+    E.cy = 0;
+    return;
+  }
+  int y = E.cy - 1;
+  for (;;) {
+    if (get_filerow_by_line(y) != fr) break;
+    y--;
+  }
+  E.cy = y + 1;
+}
+
+
 void editorMoveCursorEOL() {
-  E.cx = E.row[E.cy].size - 1; 
+  int fr = get_filerow();
+  int y = E.cy + 1;
+  for (;;) {
+    if (get_filerow_by_line(y) != fr) break;
+    y++;
+  }
+  E.cy = y - 1;
+
+  int size = E.row[fr].size;
+  if (size == 0) {
+    E.cx = 0;
+    return;
+  }
+  E.cx = E.row[fr].size%E.screencols - 1;
+  if (E.cx == 0) E.cx = E.screencols - 1;
 }
 
 // not same as 'e' but moves to end of word or stays put if already on end of word
