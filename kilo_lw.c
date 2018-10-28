@@ -435,17 +435,8 @@ void editorInsertNewline(int direction) {
     if (E.smartindent) i = editorIndentAmount(E.cy);
     else i = 0;
 
-   // E.cy++;
+    E.cy++;
 
-    row = &E.row[get_filerow() + 1];
-    int fr = get_filerow();
-    int y = E.cy;
-    for (;;) {
-      if (get_filerow_by_line(y) > fr) break;   
-      //if (get_filerow_by_line(y) == E.filerows - 1) break;
-      y++;
-    }
-    E.cy = y;
     E.cx = 0;
     for (;;){
       if (row->chars[0] != ' ') break;
