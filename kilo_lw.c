@@ -814,7 +814,7 @@ void editorMoveCursor(int key) {
     case ARROW_DOWN:
     case 'j':
       lines = (row->size - get_filecol())/E.screencols;
-      if (get_filerow() < E.filerows-1) E.cy = E.cy + lines + 1; //E.cy++; //slz change added -1 
+      if (get_filerow() < E.filerows-1) E.cy = E.cy + lines + 1; 
       break;
   }
 
@@ -1909,45 +1909,47 @@ void editorMoveEndWord() {
 }
 
 void editorDecorateWord(int c) {
-  erow *row = &E.row[E.cy];
+  int fr = get_filerow();
+  int fc = get_filecol();
+  erow *row = &E.row[fr];
   char cc;
-  if (row->chars[E.cx] < 48) return;
+  if (row->chars[fc] < 48) return;
 
   int i, j;
 
   /*Note to catch ` would have to be row->chars[i] < 48 || row-chars[i] == 96 - may not be worth it*/
 
-  for (i = E.cx - 1; i > -1; i--){
+  for (i = fc - 1; i > -1; i--){
     if (row->chars[i] < 48) break;
   }
 
-  for (j = E.cx + 1; j < row->size ; j++) {
+  for (j = fc + 1; j < row->size ; j++) {
     if (row->chars[j] < 48) break;
   }
   
   if (row->chars[i] != '*' && row->chars[i] != '`'){
     cc = (c == CTRL_KEY('b') || c ==CTRL_KEY('i')) ? '*' : '`';
-    E.cx = i + 1;
+    E.cx = i%E.screencols + 1;
     editorInsertChar(cc);
-    E.cx = j + 1;
+    E.cx = j%E.screencols+ 1;
     editorInsertChar(cc);
 
     if (c == CTRL_KEY('b')) {
-      E.cx = i + 1;
+      E.cx = i%E.screencols + 1;
       editorInsertChar('*');
-      E.cx = j + 2;
+      E.cx = j%E.screencols + 2;
       editorInsertChar('*');
     }
   } else {
-    E.cx = i;
+    E.cx = i%E.screencols; 
     editorDelChar();
-    E.cx = j-1;
+    E.cx = j%E.screencols-1;
     editorDelChar();
 
     if (c == CTRL_KEY('b')) {
-      E.cx = i - 1;
+      E.cx = i%E.screencols - 1;
       editorDelChar();
-      E.cx = j - 2;
+      E.cx = j%E.screencols - 2;
       editorDelChar();
     }
   }
