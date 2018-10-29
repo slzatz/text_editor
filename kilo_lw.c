@@ -777,12 +777,18 @@ void editorSetMessage(const char *fmt, ...) {
 
 void editorMoveCursor(int key) {
 
-  erow *row = &E.row[get_filerow()];
+  int fr = get_filerow();
+  int lines;
+  erow *row = &E.row[fr];
 
   switch (key) {
     case ARROW_LEFT:
     case 'h':
-      if (E.cx != 0) E.cx--; //do need to check for row?
+      if (E.cx == 0 && get_filecol() > 0) {
+        E.cx = E.screencols - 1;
+        E.cy--;
+      }
+      else if (E.cx != 0) E.cx--; //do need to check for row?
       break;
 
     case ARROW_RIGHT:
@@ -798,13 +804,17 @@ void editorMoveCursor(int key) {
 
     case ARROW_UP:
     case 'k':
-      if (E.cy != 0) E.cy--;
+      lines = get_filecol()/E.screencols;
+      int more_lines = E.row[fr - 1].size/E.screencols;
+      if (E.row[fr - 1].size%E.screencols) more_lines++;
+      if (more_lines == 0) more_lines = 1;
+      if (E.cy != 0) E.cy = E.cy - lines - more_lines;
       break;
 
     case ARROW_DOWN:
     case 'j':
-      //if (E.cy < E.filerows-1) E.cy++; //slz change added -1 
-      if (get_filerow() < E.filerows-1) E.cy++; //slz change added -1 
+      lines = (row->size - get_filecol())/E.screencols;
+      if (get_filerow() < E.filerows-1) E.cy = E.cy + lines + 1; //E.cy++; //slz change added -1 
       break;
   }
 
