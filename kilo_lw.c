@@ -278,8 +278,8 @@ int getWindowSize(int *rows, int *cols) {
 
 /*** row operations ***/
 
-//at is the row number of the row to insert
-void editorInsertRow(int at, char *s, size_t len) {
+//fr is the row number of the row to insert
+void editorInsertRow(int fr, char *s, size_t len) {
 
   /*E.row is a pointer to an array of erow structures
   The array of erows that E.row points to needs to have its memory enlarged when
@@ -289,21 +289,21 @@ void editorInsertRow(int at, char *s, size_t len) {
 
   /*
   memmove(dest, source, number of bytes to move?)
-  moves the line at at to at+1 and all the other erow structs until the end
-  when you insert into the last row E.filerows==at then no memory is moved
-  apparently ok if there is no E.row[at+1] if number of bytes = 0
-  so below we are moving the row structure currently at *at* to x+1
-  and all the rows below *at* to a new location to make room at *at*
+  moves the line at fr to fr+1 and all the other erow structs until the end
+  when you insert into the last row E.filerows==fr then no memory is moved
+  apparently ok if there is no E.row[fr+1] if number of bytes = 0
+  so below we are moving the row structure currently ffr*fr* to x+1
+  and all the rows below *fr* to a new location to make room at *fr*
   to create room for the line that we are inserting
   */
 
-  memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * (E.filerows - at));
+  memmove(&E.row[fr + 1], &E.row[fr], sizeof(erow) * (E.filerows - fr));
 
   // section below creates an erow struct for the new row
-  E.row[at].size = len;
-  E.row[at].chars = malloc(len + 1);
-  memcpy(E.row[at].chars, s, len);
-  E.row[at].chars[len] = '\0'; //each line is made into a c-string (maybe for searching)
+  E.row[fr].size = len;
+  E.row[fr].chars = malloc(len + 1);
+  memcpy(E.row[fr].chars, s, len);
+  E.row[fr].chars[len] = '\0'; //each line is made into a c-string (maybe for searching)
   E.filerows++;
   /*
   int y = E.cy;
@@ -320,17 +320,25 @@ void editorFreeRow(erow *row) {
   free(row->chars);
 }
 
-void editorDelRow(int at) {
+void editorDelRow(int fr) {
   //editorSetMessage("Row to delete = %d; E.filerows = %d", at, E.filerows); 
   if (E.filerows == 0) return; // some calls may duplicate this guard
-  editorFreeRow(&E.row[at]);
+  int fc = get_filecol();
+  editorFreeRow(&E.row[fr]);
   if ( E.filerows != 1) { 
-    memmove(&E.row[at], &E.row[at + 1], sizeof(erow) * (E.filerows - at - 1));
+    memmove(&E.row[fr], &E.row[fr + 1], sizeof(erow) * (E.filerows - fr - 1));
   } else {
     E.row = NULL;
   }
+
   E.filerows--;
-  if (E.cy == E.filerows && E.cy > 0) E.cy--; 
+
+  if (E.cy > 0) {
+    int lines = fc/E.screencols;
+    E.cy = E.cy - lines;
+
+    if (fr == E.filerows) E.cy--;
+  }
   E.dirty++;
   //editorSetMessage("Row deleted = %d; E.filerows after deletion = %d E.cx = %d E.row[at].size = %d", at, E.filerows, E.cx, E.row[at].size); 
 }
@@ -486,19 +494,23 @@ void editorDelChar() {
 
 void editorBackspace() {
   if (E.cx == 0 && E.cy == 0) return;
-  erow *row = &E.row[E.cy];
+  int fc = get_filecol();
+  int fr = get_filerow();
+  erow *row = &E.row[fr];
 
-  if (E.cx > 0) {
-
+  if (fc > 0) {
     //memmove(dest, source, number of bytes to move?)
-    memmove(&row->chars[E.cx - 1], &row->chars[E.cx], row->size - E.cx + 1);
+    memmove(&row->chars[fc - 1], &row->chars[fc], row->size - fc + 1);
     row->size--;
     E.cx--;
   } else {
     E.cx = E.row[E.cy - 1].size;
-    editorRowAppendString(&E.row[E.cy - 1], row->chars, row->size);
-    editorDelRow(E.cy);
-    if (E.cy != E.filerows - 1) E.cy--; //editorDelRow will decrement if last row
+    editorRowAppendString(&E.row[fr - 1], row->chars, row->size);
+    //editorDelRow(fr) - what's needed is below so don't have to call it;
+    editorFreeRow(&E.row[fr]);
+    memmove(&E.row[fr], &E.row[fr + 1], sizeof(erow) * (E.filerows - fr - 1));
+    E.filerows--;
+    E.cy--;
   }
   E.dirty++;
 }
@@ -660,13 +672,16 @@ void editorDrawRows(struct abuf *ab) {
             abAppend(ab, &E.row[filerow].chars[start], len);
             abAppend(ab, "\x1b[0m", 4); //slz return background to normal
         
-        } else if (E.mode == 4 && filerow == E.cy) {
-            abAppend(ab, &E.row[filerow].chars[0], E.highlight[0] - E.coloff);
+        } else if (E.mode == 4 && filerow == get_filerow()) {
+            if ((E.highlight[0] > start) && (E.highlight[0] < start + len)) {
+            abAppend(ab, &E.row[filerow].chars[start], E.highlight[0] - start);
             abAppend(ab, "\x1b[48;5;242m", 11);
             abAppend(ab, &E.row[filerow].chars[E.highlight[0]], E.highlight[1]
-                                                - E.highlight[0] - E.coloff);
+                                                - E.highlight[0]);
             abAppend(ab, "\x1b[0m", 4); //slz return background to normal
-            abAppend(ab, &E.row[filerow].chars[E.highlight[1]], len - E.highlight[1]);
+            abAppend(ab, &E.row[filerow].chars[E.highlight[1]], start + len - E.highlight[1]);
+            } else abAppend(ab, &E.row[filerow].chars[start], len);
+
         
         } else abAppend(ab, &E.row[filerow].chars[start], len);
     
@@ -1119,7 +1134,8 @@ void editorProcessKeypress() {
       E.mode = 3;
       E.command[0] = '\0';
       E.repeat = 0;
-      E.highlight[0] = E.highlight[1] = E.cy;
+      //E.highlight[0] = E.highlight[1] = E.cy;
+      E.highlight[0] = E.highlight[1] = get_filerow();
       editorSetMessage("\x1b[1m-- VISUAL LINE --\x1b[0m");
       return;
 
@@ -1127,7 +1143,7 @@ void editorProcessKeypress() {
       E.mode = 4;
       E.command[0] = '\0';
       E.repeat = 0;
-      E.highlight[0] = E.highlight[1] = E.cx;
+      E.highlight[0] = E.highlight[1] = get_filecol();
       editorSetMessage("\x1b[1m-- VISUAL --\x1b[0m");
       return;
 
@@ -1232,12 +1248,15 @@ void editorProcessKeypress() {
       return;
 
     case C_dd:
+      ;
+      int fr = get_filerow();
       if (E.filerows != 0) {
-        int r = E.filerows - E.cy;
+        //int r = E.filerows - E.cy;
+        int r = E.filerows - fr;
         E.repeat = (r >= E.repeat) ? E.repeat : r ;
         editorCreateSnapshot();
         editorYankLine(E.repeat);
-        for (int i = 0; i < E.repeat ; i++) editorDelRow(E.cy);
+        for (int i = 0; i < E.repeat ; i++) editorDelRow(fr);
       }
       E.cx = 0;
       E.command[0] = '\0';
@@ -1421,17 +1440,17 @@ void editorProcessKeypress() {
     case 'k':
     case 'l':
       editorMoveCursor(c);
-      E.highlight[1] = E.cy;
+      E.highlight[1] = get_filerow();
       return;
 
     case 'x':
       if (E.filerows != 0) {
         editorCreateSnapshot();
         E.repeat = E.highlight[1] - E.highlight[0] + 1;
-        E.cy = E.highlight[0];
+        E.cy = E.highlight[0]; // this isn't right because E.highlight[0] and [1] are now rows
         editorYankLine(E.repeat);
 
-        for (int i = 0; i < E.repeat; i++) editorDelRow(E.cy);
+        for (int i = 0; i < E.repeat; i++) editorDelRow(E.highlight[0]);
       }
       E.cx = 0;
       E.command[0] = '\0';
@@ -1489,6 +1508,7 @@ void editorProcessKeypress() {
       return;
     }
 
+ // visual mode
   } else if (E.mode == 4) {
 
     switch (c) {
@@ -1502,17 +1522,17 @@ void editorProcessKeypress() {
     case 'k':
     case 'l':
       editorMoveCursor(c);
-      E.highlight[1] = E.cx;
+      E.highlight[1] = get_filecol();
       return;
 
     case 'x':
       editorCreateSnapshot();
       E.repeat = E.highlight[1] - E.highlight[0] + 1;
-      E.cx = E.highlight[0];
+      //E.cx = E.highlight[0]; need to position E.cx
       editorYankString(); 
 
       for (int i = 0; i < E.repeat; i++) {
-        editorDelChar(E.cx);
+        editorDelChar(E.highlight[0]);
       }
 
       E.command[0] = '\0';
@@ -1693,10 +1713,11 @@ void editorYankLine(int n){
     line_buffer[i] = NULL;
     }
 
+  int fr = get_filerow();
   for (int i=0; i < n; i++) {
-    int len = E.row[E.cy+i].size;
+    int len = E.row[fr + i].size;
     line_buffer[i] = malloc(len + 1);
-    memcpy(line_buffer[i], E.row[E.cy+i].chars, len);
+    memcpy(line_buffer[i], E.row[fr + i].chars, len);
     line_buffer[i][len] = '\0';
   }
   // set string_buffer to "" to signal should paste line and not chars
@@ -1705,7 +1726,8 @@ void editorYankLine(int n){
 
 void editorYankString() {
   int n,x;
-  erow *row = &E.row[E.cy];
+  int fr = get_filerow();
+  erow *row = &E.row[fr];
   for (x = E.highlight[0], n = 0; x < E.highlight[1]+1; x++, n++) {
       string_buffer[n] = row->chars[x];
   }
@@ -1717,9 +1739,11 @@ void editorPasteString() {
   if (E.cy == E.filerows) {
     editorInsertRow(E.filerows, "", 0); //editorInsertRow will also insert another '\0'
   }
+  int fr = get_filerow();
+  int fc = get_filecol();
 
-  erow *row = &E.row[E.cy];
-  if (E.cx < 0 || E.cx > row->size) E.cx = row->size;
+  erow *row = &E.row[fr];
+  //if (E.cx < 0 || E.cx > row->size) E.cx = row->size; 10-29-2018 ? is this necessary - not sure
   int len = strlen(string_buffer);
   row->chars = realloc(row->chars, row->size + len); 
 
@@ -1729,32 +1753,36 @@ void editorPasteString() {
      memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * (E.filerows - at));
   */
 
-  memmove(&row->chars[E.cx + len], &row->chars[E.cx], row->size - E.cx); //****was E.cx + 1
+  memmove(&row->chars[fc + len], &row->chars[fc], row->size - fc); //****was E.cx + 1
 
   for (int i = 0; i < len; i++) {
     row->size++;
-    row->chars[E.cx] = string_buffer[i];
-    E.cx++;
+    row->chars[fc] = string_buffer[i];
+    fc++;
   }
+  E.cx = fc%E.screencols; //this can't work in all circumstances - might have to move E.cy too
   E.dirty++;
 }
 
 void editorPasteLine(){
   if ( E.filerows == 0 ) editorInsertRow(0, "", 0);
+  int fr = get_filerow();
   for (int i=0; i < 10; i++) {
     if (line_buffer[i] == NULL) break;
 
     int len = strlen(line_buffer[i]);
-    E.cy++;
-    editorInsertRow(E.cy, line_buffer[i], len);
+    fr++;
+    editorInsertRow(fr, line_buffer[i], len);
+    //need to set E.cy - need general fr to E.cy function 10-28-2018
   }
 }
 
 void editorIndentRow() {
-  erow *row = &E.row[E.cy];
+  int fr = get_filerow();
+  erow *row = &E.row[fr];
   if (row->size == 0) return;
   //E.cx = 0;
-  E.cx = editorIndentAmount(E.cy);
+  E.cx = editorIndentAmount(fr);
   for (int i = 0; i < E.indent; i++) editorInsertChar(' ');
   E.dirty++;
 }
