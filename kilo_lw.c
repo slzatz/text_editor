@@ -292,7 +292,7 @@ void editorInsertRow(int fr, char *s, size_t len) {
   moves the line at fr to fr+1 and all the other erow structs until the end
   when you insert into the last row E.filerows==fr then no memory is moved
   apparently ok if there is no E.row[fr+1] if number of bytes = 0
-  so below we are moving the row structure currently ffr*fr* to x+1
+  so below we are moving the row structure currently at *fr* to x+1
   and all the rows below *fr* to a new location to make room at *fr*
   to create room for the line that we are inserting
   */
@@ -308,7 +308,7 @@ void editorInsertRow(int fr, char *s, size_t len) {
   /*
   int y = E.cy;
   for (;;) {
-    if (get_filerow_by_line(y) > at) break;   
+    if (get_filerow_by_line(y) > fr) break;   
     if (get_filerow_by_line(y) == E.filerows - 1) break;
     y++;
   }
@@ -321,7 +321,7 @@ void editorFreeRow(erow *row) {
 }
 
 void editorDelRow(int fr) {
-  //editorSetMessage("Row to delete = %d; E.filerows = %d", at, E.filerows); 
+  //editorSetMessage("Row to delete = %d; E.filerows = %d", fr, E.filerows); 
   if (E.filerows == 0) return; // some calls may duplicate this guard
   int fc = get_filecol();
   editorFreeRow(&E.row[fr]);
@@ -340,7 +340,7 @@ void editorDelRow(int fr) {
     if (fr == E.filerows) E.cy--;
   }
   E.dirty++;
-  //editorSetMessage("Row deleted = %d; E.filerows after deletion = %d E.cx = %d E.row[at].size = %d", at, E.filerows, E.cx, E.row[at].size); 
+  //editorSetMessage("Row deleted = %d; E.filerows after deletion = %d E.cx = %d E.row[fr].size = %d", fr, E.filerows, E.cx, E.row[fr].size); 
 }
 
 void editorRowAppendString(erow *row, char *s, size_t len) {
@@ -352,12 +352,12 @@ void editorRowAppendString(erow *row, char *s, size_t len) {
 }
 
 /* not in use right now
-void editorRowDelChar(erow *row, int at) {
-  if (at < 0 || at >= row->size) return;
+void editorRowDelChar(erow *row, int fr) {
+  if (fr < 0 || fr >= row->size) return;
   // is there any reason to realloc for one character?
   // row->chars = realloc(row->chars, row->size -1); 
   //have to realloc when adding but I guess no need to realloc for one character
-  memmove(&row->chars[at], &row->chars[at + 1], row->size - at);
+  memmove(&row->chars[fr], &row->chars[fr + 1], row->size - fr);
   row->size--;
   E.dirty++;
 }
@@ -378,10 +378,10 @@ void editorInsertChar(int c) {
   //if (E.cx < 0 || E.cx > row->size) E.cx = row->size; //can either of these be true? ie is check necessary?
   row->chars = realloc(row->chars, row->size + 1); //******* was size + 2
 
-  /* moving all the chars at the current x cursor position on char
+  /* moving all the chars fr the current x cursor position on char
      farther down the char string to make room for the new character
      Maybe a clue from editorInsertRow - it's memmove is below
-     memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * (E.filerows - at));
+     memmove(&E.row[fr + 1], &E.row[fr], sizeof(erow) * (E.filerows - fr));
   */
 
   memmove(&row->chars[fc + 1], &row->chars[fc], row->size - fc); //****was E.cx + 1
@@ -483,7 +483,7 @@ void editorDelChar() {
   if (E.filerows == 1 && row->size == 0) {
     E.filerows = 0;
     free(E.row);
-    //editorFreeRow(&E.row[at]);
+    //editorFreeRow(&E.row[fr]);
     E.row = NULL;
   }
   else if (E.cx == row->size && E.cx) E.cx = row->size - 1;  // not sure what to do about this
@@ -1528,11 +1528,11 @@ void editorProcessKeypress() {
     case 'x':
       editorCreateSnapshot();
       E.repeat = E.highlight[1] - E.highlight[0] + 1;
-      //E.cx = E.highlight[0]; need to position E.cx
+      E.cx = E.highlight[0]%E.screencols; //need to position E.cx
       editorYankString(); 
 
       for (int i = 0; i < E.repeat; i++) {
-        editorDelChar(E.highlight[0]);
+        editorDelChar();
       }
 
       E.command[0] = '\0';
@@ -1590,7 +1590,7 @@ int get_filerow() {
   int n;
   int linerows;
   if (E.cy == 0) return 0;
-  //for (n=0; n < E.cy; n++) {
+  // should below be for (;;) since the break should always work
   for (n=0; n < E.cy+1; n++) {
     linerows = E.row[n].size/E.screencols;
     if (E.row[n].size%E.screencols) linerows++;
@@ -1598,12 +1598,9 @@ int get_filerow() {
     screenrow+= linerows;
     if (screenrow >= E.cy) break;
   }
-
+  // this is for typing (inserting characters and crossing to the next screen line
   if (E.continuation) n--;
   return n;
-
-  //if (screenrow > E.cy) return n;
-  //else return n ;//n+1
 }
 
 int get_filerow_by_line (int y){
@@ -1611,6 +1608,7 @@ int get_filerow_by_line (int y){
   int n;
   int linerows;
   if (y == 0) return 0;
+  // should below be for (;;) since the break should always work
   for (n=0; n < y+1; n++) {
     linerows = E.row[n].size/E.screencols;
     if (E.row[n].size%E.screencols) linerows++;
@@ -1619,12 +1617,10 @@ int get_filerow_by_line (int y){
     if (screenrow >= y) break;
   }
 
-  // turns out you only want E.continuation in get_filerow
-  //if (E.continuation) n--; ///////////////////////
+  // turns out we only need to deal with  E.continuation in get_filerow
+  //if (E.continuation) n--; 
   return n;
 
-  //if (screenrow > y) return n; //n
-  //else return n  ;//n+1
 }
 
 int get_filecol() {
@@ -1634,12 +1630,10 @@ int get_filecol() {
   for (;;) {
     if (y == 0) break;
     y--;
-    //if (get_filerow_by_line(y) != fr) break;
     if (get_filerow_by_line(y) < fr) break;
     n++;
   }
 
-  //if (E.continuation) n++;
   int col = E.cx + n*E.screencols; 
   return col;
 }
@@ -1750,7 +1744,7 @@ void editorPasteString() {
   /* moving all the chars at the current x cursor position on char
      farther down the char string to make room for the new character
      Maybe a clue from editorInsertRow - it's memmove is below
-     memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * (E.filerows - at));
+     memmove(&E.row[fr + 1], &E.row[fr], sizeof(erow) * (E.filerows - fr));
   */
 
   memmove(&row->chars[fc + len], &row->chars[fc], row->size - fc); //****was E.cx + 1
