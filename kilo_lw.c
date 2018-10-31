@@ -143,8 +143,8 @@ void editorRestoreSnapshot();
 void editorCreateSnapshot(); 
 int get_filecol();
 int get_filerow_by_line (int y);
-int get_filerow();
-int get_length_screen_line (int y); 
+int get_filerow(void);
+int get_line_char_count (int y); 
 
 int keyfromstring(char *key)
 {
@@ -498,19 +498,27 @@ void editorBackspace() {
   int fr = get_filerow();
   erow *row = &E.row[fr];
 
-  if (fc > 0) {
+  if (E.cx > 0) {
     //memmove(dest, source, number of bytes to move?)
     memmove(&row->chars[fc - 1], &row->chars[fc], row->size - fc + 1);
     row->size--;
+    if (E.cx == 1 && row->size/E.screencols) E.continuation = 1;
     E.cx--;
-  } else {
-    E.cx = E.row[E.cy - 1].size;
-    editorRowAppendString(&E.row[fr - 1], row->chars, row->size);
-    //editorDelRow(fr) - what's needed is below so don't have to call it;
-    editorFreeRow(&E.row[fr]);
-    memmove(&E.row[fr], &E.row[fr + 1], sizeof(erow) * (E.filerows - fr - 1));
-    E.filerows--;
-    E.cy--;
+  } else { //else is E.cx == 0 and could be multiline
+    if (fc > 0) { //this means it's a multiline row and we're not at the top
+      memmove(&row->chars[fc - 1], &row->chars[fc], row->size - fc + 1);
+      row->size--;
+      E.cx = E.screencols - 1;
+      E.cy--;
+      E.continuation = 0;
+    } else {// this means we're at fc == 0 so we're in the first filecolumn
+      E.cx = (E.row[fr - 1].size/E.screencols) ? E.screencols - 1 : E.row[fr - 1].size - 1;
+      editorRowAppendString(&E.row[fr - 1], row->chars, row->size);
+      editorFreeRow(&E.row[fr]);
+      memmove(&E.row[fr], &E.row[fr + 1], sizeof(erow) * (E.filerows - fr - 1));
+      E.filerows--;
+      E.cy--;
+    }
   }
   E.dirty++;
 }
@@ -828,18 +836,27 @@ void editorMoveCursor(int key) {
 
     case ARROW_DOWN:
     case 'j':
-      lines = (row->size - get_filecol())/E.screencols;
-      if (get_filerow() < E.filerows-1) E.cy = E.cy + lines + 1; 
+      ;
+      // the line of code below makes the 1st line of a row the 0th line
+      int line = get_filecol()/E.screencols;
+      //if (get_filecol()%E.screencols != 0) line++;
+      //if (get_filecol() == 0) line++; 
+      //lines = 1 + row->size/E.screencols;
+      
+      //the below is one less than the number of lines
+      lines =  row->size/E.screencols;
+      //if (row->size && row->size%E.screencols == 0) lines--;
+      if (get_filerow() < E.filerows-1) E.cy = E.cy + lines - line + 1; 
       break;
   }
 
   /* Below deals with moving cursor up and down from longer rows to shorter rows 
      row has to be calculated again because this is the new row you've landed on */
 
-  int rowlen = get_length_screen_line (E.cy); 
-  if (rowlen == 0) E.cx = 0;
-  else if (E.mode == 1 && E.cx >= rowlen ) E.cx = rowlen ;
-  else if (E.cx >= rowlen) E.cx = rowlen-1;
+  int line_char_count = get_line_char_count(E.cy); 
+  if (line_char_count == 0) E.cx = 0;
+  else if (E.mode == 1 && E.cx >= line_char_count ) E.cx = line_char_count;
+  else if (E.cx >= line_char_count) E.cx = line_char_count - 1;
 
 }
 // higher level editor function depends on editorReadKey()
@@ -1585,19 +1602,28 @@ void editorProcessKeypress() {
 }
 
 /*** slz additions ***/
-int get_filerow() {
+int get_filerow(void) {
   int screenrow = -1;
-  int n;
+  int n = 0;
   int linerows;
   if (E.cy == 0) return 0;
+  for (;;) {
+    linerows = E.row[n].size/E.screencols;
+    if (E.row[n].size%E.screencols) linerows++;
+    if (linerows == 0) linerows = 1;
+    screenrow+= linerows;
+    if (screenrow >= E.cy) break;
+    n++;
+  }
   // should below be for (;;) since the break should always work
+  /*
   for (n=0; n < E.cy+1; n++) {
     linerows = E.row[n].size/E.screencols;
     if (E.row[n].size%E.screencols) linerows++;
     if (linerows == 0) linerows = 1;
     screenrow+= linerows;
     if (screenrow >= E.cy) break;
-  }
+  }*/
   // this is for typing (inserting characters and crossing to the next screen line
   if (E.continuation) n--;
   return n;
@@ -1605,17 +1631,26 @@ int get_filerow() {
 
 int get_filerow_by_line (int y){
   int screenrow = -1;
-  int n;
+  int n = 0;
   int linerows;
   if (y == 0) return 0;
+  for (;;) {
+    linerows = E.row[n].size/E.screencols;
+    if (E.row[n].size%E.screencols) linerows++;
+    if (linerows == 0) linerows = 1; // a row with no characters still takes up a line may also deal with last line
+    screenrow+= linerows;
+    if (screenrow >= y) break;
+    n++;
+  }
   // should below be for (;;) since the break should always work
+  /*
   for (n=0; n < y+1; n++) {
     linerows = E.row[n].size/E.screencols;
     if (E.row[n].size%E.screencols) linerows++;
     if (linerows == 0) linerows = 1; // a row with no characters still takes up a line may also deal with last line
     screenrow+= linerows;
     if (screenrow >= y) break;
-  }
+  }*/
 
   // turns out we only need to deal with  E.continuation in get_filerow
   //if (E.continuation) n--; 
@@ -1638,7 +1673,8 @@ int get_filecol() {
   return col;
 }
 
-int get_length_screen_line (int y) {
+int get_line_char_count(int y) {
+  // n appears to equal the line in the row
   int fr = get_filerow_by_line(y);
   int n = 0;
   int col;
@@ -1648,12 +1684,22 @@ int get_length_screen_line (int y) {
     if (get_filerow_by_line(y) != fr) break;
     n++;
   }
+  if (E.row[fr].size == 0) return 0;
+  //below determines how many total lines
+  int lines = E.row[fr].size/E.screencols;
+  if (E.row[fr].size%E.screencols) lines++;
+  if (lines == 0) lines = 1;
 
+  // below returns a linei's character counts; note col will be one less
+  if (lines == (n + 1)) col = (E.row[fr].size%E.screencols);
+  else col = E.screencols;
+
+/* way as of 10-30-2018
   if (E.row[fr].size > E.screencols) {
     if ((n+1)*E.screencols < E.row[fr].size) col = E.screencols;
     else col = E.row[fr].size - n*E.screencols; 
   } else  col = E.row[fr].size;
-
+*/
   return col;
 }
 
@@ -2162,7 +2208,7 @@ int main(int argc, char *argv[]) {
   while (1) {
     editorRefreshScreen(); 
     editorProcessKeypress();
-  editorSetMessage("length = %d, E.cx = %d, E.cy = %d, filerow = %d, filecol = %d, size = %d", get_length_screen_line (E.cy), E.cx, E.cy, get_filerow(), get_filecol(), E.row[get_filerow()].size); 
+  editorSetMessage("length = %d, E.cx = %d, E.cy = %d, filerow = %d, filecol = %d, size = %d", get_line_char_count(E.cy), E.cx, E.cy, get_filerow(), get_filecol(), E.row[get_filerow()].size); 
   }
   return 0;
 }
