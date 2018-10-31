@@ -72,7 +72,7 @@ struct editorConfig {
   erow *prev_row; //for undo purposes
   int dirty; //file changes since last save
   char *filename;
-  char statusmsg[80]; //status msg is a character array max 80 char
+  char statusmsg[100]; //status msg is a character array max 80 char
   //time_t statusmsg_time;
   struct termios orig_termios;
   int highlight[2];
@@ -324,19 +324,16 @@ void editorDelRow(int fr) {
   //editorSetMessage("Row to delete = %d; E.filerows = %d", fr, E.filerows); 
   if (E.filerows == 0) return; // some calls may duplicate this guard
   int fc = get_filecol();
-  editorFreeRow(&E.row[fr]);
-  if ( E.filerows != 1) { 
-    memmove(&E.row[fr], &E.row[fr + 1], sizeof(erow) * (E.filerows - fr - 1));
-  } else {
+  editorFreeRow(&E.row[fr]); 
+  memmove(&E.row[fr], &E.row[fr + 1], sizeof(erow) * (E.filerows - fr - 1));
+  E.filerows--; 
+  if (E.filerows == 0) {
     E.row = NULL;
-  }
-
-  E.filerows--;
-
-  if (E.cy > 0) {
+    E.cy = 0;
+    E.cx = 0;
+  } else if (E.cy > 0) {
     int lines = fc/E.screencols;
     E.cy = E.cy - lines;
-
     if (fr == E.filerows) E.cy--;
   }
   E.dirty++;
@@ -2208,7 +2205,10 @@ int main(int argc, char *argv[]) {
   while (1) {
     editorRefreshScreen(); 
     editorProcessKeypress();
-  editorSetMessage("length = %d, E.cx = %d, E.cy = %d, filerow = %d, filecol = %d, size = %d", get_line_char_count(E.cy), E.cx, E.cy, get_filerow(), get_filecol(), E.row[get_filerow()].size); 
+    if (E.row)
+  editorSetMessage("length = %d, E.cx = %d, E.cy = %d, filerow = %d, filecol = %d, size = %d, E.filerows = %d", get_line_char_count(E.cy), E.cx, E.cy, get_filerow(), get_filecol(), E.row[get_filerow()].size, E.filerows); 
+  else
+  editorSetMessage("E.row is NULL, E.cx = %d, E.cy = %d,  E.filerows = %d", E.cx, E.cy, E.filerows); 
   }
   return 0;
 }
