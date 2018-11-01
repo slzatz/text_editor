@@ -113,35 +113,35 @@ static t_symstruct lookuptable[] = {
 /*** prototypes ***/
 
 void editorSetMessage(const char *fmt, ...);
-void editorRefreshScreen();
-void getcharundercursor();
+void editorRefreshScreen(void);
+void getcharundercursor(void);
 void editorDecorateWord(int c);
 void editorDecorateVisual(int c);
-void editorDelWord();
-void editorIndentRow();
-void editorUnIndentRow();
+void editorDelWord(void);
+void editorIndentRow(void);
+void editorUnIndentRow(void);
 int editorIndentAmount(int y);
 void editorMoveCursor(int key);
-void editorBackspace();
-void editorDelChar();
-void editorDeleteToEndOfLine();
+void editorBackspace(void);
+void editorDelChar(void);
+void editorDeleteToEndOfLine(void);
 void editorYankLine(int n);
-void editorPasteLine();
-void editorPasteString();
-void editorYankString();
-void editorMoveCursorEOL();
-void editorMoveCursorBOL();
-void editorMoveBeginningWord();
-void editorMoveEndWord(); 
-void editorMoveEndWord2(); //not 'e' but just moves to end of word even if on last letter
-void editorMoveNextWord();
-void editorMarkupLink();
-void getWordUnderCursor();
-void editorFindNextWord();
-void editorChangeCase();
-void editorRestoreSnapshot(); 
-void editorCreateSnapshot(); 
-int get_filecol();
+void editorPasteLine(void);
+void editorPasteString(void);
+void editorYankString(void);
+void editorMoveCursorEOL(void);
+void editorMoveCursorBOL(void);
+void editorMoveBeginningWord(void);
+void editorMoveEndWord(void); 
+void editorMoveEndWord2(void); //not 'e' but just moves to end of word even if on last letter
+void editorMoveNextWord(void);
+void editorMarkupLink(void);
+void getWordUnderCursor(void);
+void editorFindNextWord(void);
+void editorChangeCase(void);
+void editorRestoreSnapshot(void); 
+void editorCreateSnapshot(void); 
+int get_filecol(void);
 int get_filerow_by_line (int y);
 int get_filerow(void);
 int get_line_char_count (int y); 
@@ -169,12 +169,12 @@ void die(const char *s) {
   exit(1);
 }
 
-void disableRawMode() {
+void disableRawMode(void) {
   if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios) == -1)
     die("tcsetattr");
 }
 
-void enableRawMode() {
+void enableRawMode(void) {
   if (tcgetattr(STDIN_FILENO, &E.orig_termios) == -1) die("tcgetattr");
   atexit(disableRawMode);
 
@@ -189,7 +189,7 @@ void enableRawMode() {
   if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) die("tcsetattr");
 }
 
-int editorReadKey() {
+int editorReadKey(void) {
   int nread;
   char c;
 
@@ -305,14 +305,6 @@ void editorInsertRow(int fr, char *s, size_t len) {
   memcpy(E.row[fr].chars, s, len);
   E.row[fr].chars[len] = '\0'; //each line is made into a c-string (maybe for searching)
   E.filerows++;
-  /*
-  int y = E.cy;
-  for (;;) {
-    if (get_filerow_by_line(y) > fr) break;   
-    if (get_filerow_by_line(y) == E.filerows - 1) break;
-    y++;
-  }
-  E.cy = y;*/
   E.dirty++;
 }
 
@@ -467,7 +459,7 @@ void editorInsertNewline(int direction) {
   }
 }
 
-void editorDelChar() {
+void editorDelChar(void) {
   erow *row = &E.row[get_filerow()];
 
   /* row size = 1 means there is 1 char; size 0 means 0 chars */
@@ -490,7 +482,7 @@ void editorDelChar() {
 
 }
 
-void editorBackspace() {
+void editorBackspace(void) {
   if (E.cx == 0 && E.cy == 0) return;
   int fc = get_filecol();
   int fr = get_filerow();
@@ -500,7 +492,7 @@ void editorBackspace() {
     //memmove(dest, source, number of bytes to move?)
     memmove(&row->chars[fc - 1], &row->chars[fc], row->size - fc + 1);
     row->size--;
-    if (E.cx == 1 && row->size/E.screencols) E.continuation = 1;
+    if (E.cx == 1 && row->size/E.screencols && fc > row->size) E.continuation = 1;
     E.cx--;
   } else { //else is E.cx == 0 and could be multiline
     if (fc > 0) { //this means it's a multiline row and we're not at the top
@@ -563,7 +555,7 @@ void editorOpen(char *filename) {
   E.dirty = 0;
 }
 
-void editorSave() {
+void editorSave(void) {
   if (E.filename == NULL) return;
   int len;
   char *buf = editorRowsToString(&len);
@@ -625,7 +617,7 @@ void abFree(struct abuf *ab) {
 
 /*** output ***/
 
-void editorScroll() {
+void editorScroll(void) {
 
   if (E.cy < E.rowoff) {
     E.rowoff = E.cy;
@@ -747,7 +739,7 @@ void editorDrawMessageBar(struct abuf *ab) {
     abAppend(ab, E.statusmsg, msglen);
 }
 
-void editorRefreshScreen() {
+void editorRefreshScreen(void) {
   editorScroll();
 
   /*  struct abuf {
@@ -858,7 +850,7 @@ void editorMoveCursor(int key) {
 
 }
 // higher level editor function depends on editorReadKey()
-void editorProcessKeypress() {
+void editorProcessKeypress(void) {
   static int quit_times = KILO_QUIT_TIMES;
   int i, start, end;
 
@@ -1652,7 +1644,7 @@ int get_screenline_from_filerow (int fr){
 
 }
 
-int get_filecol() {
+int get_filecol(void) {
   int n = 0;
   int y = E.cy;
   int fr = get_filerow();
@@ -1697,7 +1689,7 @@ int get_line_char_count(int y) {
   return col;
 }
 
-void editorCreateSnapshot() {
+void editorCreateSnapshot(void) {
   if ( E.filerows == 0 ) return; //don't create snapshot if there is no text
   for (int j = 0 ; j < E.prev_filerows ; j++ ) {
     free(E.prev_row[j].chars);
@@ -1713,7 +1705,7 @@ void editorCreateSnapshot() {
   E.prev_filerows = E.filerows;
 }
 
-void editorRestoreSnapshot() {
+void editorRestoreSnapshot(void) {
   for (int j = 0 ; j < E.filerows ; j++ ) {
     free(E.row[j].chars);
   } 
@@ -1728,7 +1720,7 @@ void editorRestoreSnapshot() {
   E.filerows = E.prev_filerows;
 }
 
-void editorChangeCase() {
+void editorChangeCase(void) {
   erow *row = &E.row[E.cy];
   char d = row->chars[E.cx];
   if (d < 91 && d > 64) d = d + 32;
@@ -1758,7 +1750,7 @@ void editorYankLine(int n){
   string_buffer[0] = '\0';
 }
 
-void editorYankString() {
+void editorYankString(void) {
   int n,x;
   int fr = get_filerow();
   erow *row = &E.row[fr];
@@ -1769,7 +1761,7 @@ void editorYankString() {
   string_buffer[n] = '\0';
 }
 
-void editorPasteString() {
+void editorPasteString(void) {
   if (E.cy == E.filerows) {
     editorInsertRow(E.filerows, "", 0); //editorInsertRow will also insert another '\0'
   }
@@ -1798,7 +1790,7 @@ void editorPasteString() {
   E.dirty++;
 }
 
-void editorPasteLine(){
+void editorPasteLine(void){
   if ( E.filerows == 0 ) editorInsertRow(0, "", 0);
   int fr = get_filerow();
   for (int i=0; i < 10; i++) {
@@ -1811,7 +1803,7 @@ void editorPasteLine(){
   }
 }
 
-void editorIndentRow() {
+void editorIndentRow(void) {
   int fr = get_filerow();
   erow *row = &E.row[fr];
   if (row->size == 0) return;
@@ -1821,7 +1813,7 @@ void editorIndentRow() {
   E.dirty++;
 }
 
-void editorUnIndentRow() {
+void editorUnIndentRow(void) {
   erow *row = &E.row[E.cy];
   if (row->size == 0) return;
   E.cx = 0;
@@ -1844,7 +1836,7 @@ int editorIndentAmount(int fr) {
   return i;
 }
 
-void editorDelWord() {
+void editorDelWord(void) {
   erow *row = &E.row[E.cy];
   if (row->chars[E.cx] < 48) return;
 
@@ -1864,7 +1856,7 @@ void editorDelWord() {
   //editorSetMessage("i = %d, j = %d", i, j ); 
 }
 
-void editorDeleteToEndOfLine() {
+void editorDeleteToEndOfLine(void) {
   erow *row = &E.row[E.cy];
   row->size = E.cx;
   //Arguably you don't have to reallocate when you reduce the length of chars
@@ -1872,7 +1864,7 @@ void editorDeleteToEndOfLine() {
   row->chars[E.cx] = '\0';
   }
 
-void editorMoveCursorBOL() {
+void editorMoveCursorBOL(void) {
   E.cx = 0;
   int fr = get_filerow();
   if (fr == 0) {
@@ -1888,7 +1880,7 @@ void editorMoveCursorBOL() {
 }
 
 
-void editorMoveCursorEOL() {
+void editorMoveCursorEOL(void) {
   int fr = get_filerow();
   int y = E.cy + 1;
   for (;;) {
@@ -1918,7 +1910,7 @@ void editorMoveEndWord2() {
   E.cx = j - 1;
 }
 
-void editorMoveNextWord() {
+void editorMoveNextWord(void) {
   // below is same is editorMoveEndWord2
   int j;
   erow row = E.row[E.cy];
@@ -1936,7 +1928,7 @@ void editorMoveNextWord() {
   E.cx = j;
 }
 
-void editorMoveBeginningWord() {
+void editorMoveBeginningWord(void) {
   erow *row = &E.row[E.cy];
   if (E.cx == 0) return;
   for (;;) {
@@ -1953,7 +1945,7 @@ void editorMoveBeginningWord() {
   E.cx = i + 1;
 }
 
-void editorMoveEndWord() {
+void editorMoveEndWord(void) {
   erow *row = &E.row[E.cy];
   if (E.cx == row->size - 1) return;
   for (;;) {
@@ -2033,7 +2025,7 @@ void editorDecorateVisual(int c) {
   }
 }
 
-void getWordUnderCursor(){
+void getWordUnderCursor(void){
   erow *row = &E.row[E.cy];
   if (row->chars[E.cx] < 48) return;
 
@@ -2056,7 +2048,7 @@ void getWordUnderCursor(){
 
 }
 
-void editorFindNextWord() {
+void editorFindNextWord(void) {
   int y, x;
   char *z;
   y = E.cy;
@@ -2079,7 +2071,7 @@ void editorFindNextWord() {
     editorSetMessage("x = %d; y = %d", x, y); 
 }
 
-void editorMarkupLink() {
+void editorMarkupLink(void) {
   int y, numrows, j, n, p;
   char *z;
   char *http = "http";
@@ -2141,7 +2133,7 @@ void editorMarkupLink() {
 
 /*** slz testing stuff ***/
 
-void getcharundercursor() {
+void getcharundercursor(void) {
   erow *row = &E.row[E.cy];
   char d = row->chars[E.cx];
   editorSetMessage("character under cursor at position %d of %d: %c", E.cx, row->size, d); 
@@ -2151,7 +2143,7 @@ void getcharundercursor() {
 
 /*** init ***/
 
-void initEditor() {
+void initEditor(void) {
   E.cx = 0; //cursor x position
   E.cy = 0; //cursor y position
   E.rowoff = 0;  //row the user is currently scrolled to  
@@ -2187,7 +2179,6 @@ int main(int argc, char *argv[]) {
   // for testing purposes added the else - inserts text for testing purposes 
   // when no file is being read
   else {
-    //editorInsertNewline(1); 
     editorInsertRow(0, "Hello, Steve!", 13); 
     E.cx = E.row[0].size; //put cursor at end of line
     editorInsertNewline(1); 
@@ -2195,7 +2186,6 @@ int main(int argc, char *argv[]) {
     editorInsertRow(E.filerows, "The quick brown fox jumps over the lazy dog", 43); 
     E.cx = E.row[0].size - 1; //put cursor at end of line
     E.cy = 0;
-    //E.cy = 2; //puts cursor at end of line above
   }
 
   //editorSetMessage("HELP: Ctrl-S = save | Ctrl-Q = quit"); //slz commented this out
