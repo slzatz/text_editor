@@ -403,6 +403,7 @@ void editorInsertChar(int c) {
 
 /* uses VLA */
 void editorInsertNewline(int direction) {
+  /* note this func does position cursor*/
   if (E.filerows == 0) {
     editorInsertRow(0, "", 0);
     return;
@@ -1612,15 +1613,6 @@ int get_filerow(void) {
     if (screenrow >= E.cy) break;
     n++;
   }
-  // should below be for (;;) since the break should always work
-  /*
-  for (n=0; n < E.cy+1; n++) {
-    linerows = E.row[n].size/E.screencols;
-    if (E.row[n].size%E.screencols) linerows++;
-    if (linerows == 0) linerows = 1;
-    screenrow+= linerows;
-    if (screenrow >= E.cy) break;
-  }*/
   // this is for typing (inserting characters and crossing to the next screen line
   if (E.continuation) n--;
   return n;
@@ -1639,19 +1631,24 @@ int get_filerow_by_line (int y){
     if (screenrow >= y) break;
     n++;
   }
-  // should below be for (;;) since the break should always work
-  /*
-  for (n=0; n < y+1; n++) {
-    linerows = E.row[n].size/E.screencols;
-    if (E.row[n].size%E.screencols) linerows++;
-    if (linerows == 0) linerows = 1; // a row with no characters still takes up a line may also deal with last line
-    screenrow+= linerows;
-    if (screenrow >= y) break;
-  }*/
-
   // turns out we only need to deal with  E.continuation in get_filerow
   //if (E.continuation) n--; 
   return n;
+}
+
+// not in use but returns E.cy for a given filerow
+int get_screenline_from_filerow (int fr){
+  int screenrow = -1;
+  int n = 0;
+  int screenlines;
+  if (fr == 0) return 0;
+  for (n=0;n < fr + 1;n++) {
+    screenlines = E.row[n].size/E.screencols;
+    if (E.row[n].size%E.screencols) screenlines++;
+    if (screenlines == 0) screenlines = 1; // a row with no characters still takes up a line may also deal with last line
+    screenrow+= screenlines;
+  }
+  return screenrow;
 
 }
 
@@ -2190,12 +2187,14 @@ int main(int argc, char *argv[]) {
   // for testing purposes added the else - inserts text for testing purposes 
   // when no file is being read
   else {
-    editorInsertNewline(1); 
+    //editorInsertNewline(1); 
     editorInsertRow(0, "Hello, Steve!", 13); 
-    E.cx = E.row[E.cy].size; //put cursor at end of line
+    E.cx = E.row[0].size; //put cursor at end of line
     editorInsertNewline(1); 
     editorInsertRow(E.filerows, "http://www.webmd.com", 20); //testing url markup
     editorInsertRow(E.filerows, "The quick brown fox jumps over the lazy dog", 43); 
+    E.cx = E.row[0].size - 1; //put cursor at end of line
+    E.cy = 0;
     //E.cy = 2; //puts cursor at end of line above
   }
 
