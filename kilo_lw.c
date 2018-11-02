@@ -144,7 +144,7 @@ void editorCreateSnapshot(void);
 int get_filecol(void);
 int get_filerow_by_line (int y);
 int get_filerow(void);
-int get_line_char_count (int y); 
+int get_line_char_count (void); 
 
 int keyfromstring(char *key)
 {
@@ -331,7 +331,7 @@ void editorDelRow(int fr) {
   E.dirty++;
   //editorSetMessage("Row deleted = %d; E.filerows after deletion = %d E.cx = %d E.row[fr].size = %d", fr, E.filerows, E.cx, E.row[fr].size); 
 }
-
+// only used by editorBackspace
 void editorRowAppendString(erow *row, char *s, size_t len) {
   row->chars = realloc(row->chars, row->size + len + 1);
   memcpy(&row->chars[row->size], s, len);
@@ -479,7 +479,6 @@ void editorDelChar(void) {
   else if (E.cx == row->size && E.cx) E.cx = row->size - 1;  // not sure what to do about this
 
   E.dirty++;
-
 }
 
 void editorBackspace(void) {
@@ -494,7 +493,7 @@ void editorBackspace(void) {
     row->size--;
     if (E.cx == 1 && row->size/E.screencols && fc > row->size) E.continuation = 1;
     E.cx--;
-  } else { //else is E.cx == 0 and could be multiline
+  } else { //else E.cx == 0 and could be multiline
     if (fc > 0) { //this means it's a multiline row and we're not at the top
       memmove(&row->chars[fc - 1], &row->chars[fc], row->size - fc + 1);
       row->size--;
@@ -502,8 +501,9 @@ void editorBackspace(void) {
       E.cy--;
       E.continuation = 0;
     } else {// this means we're at fc == 0 so we're in the first filecolumn
-      E.cx = (E.row[fr - 1].size/E.screencols) ? E.screencols - 1 : E.row[fr - 1].size - 1;
-      editorRowAppendString(&E.row[fr - 1], row->chars, row->size);
+      E.cx = (E.row[fr - 1].size/E.screencols) ? E.screencols : E.row[fr - 1].size ;
+      //if (E.cx < 0) E.cx = 0; //don't think this guard is necessary but we'll see
+      editorRowAppendString(&E.row[fr - 1], row->chars, row->size); //only use of this function
       editorFreeRow(&E.row[fr]);
       memmove(&E.row[fr], &E.row[fr + 1], sizeof(erow) * (E.filerows - fr - 1));
       E.filerows--;
@@ -530,7 +530,6 @@ char *editorRowsToString(int *buflen) {
     *p = '\n';
     p++;
   }
-
   return buf;
 }
 
@@ -806,15 +805,26 @@ void editorMoveCursor(int key) {
 
     case ARROW_RIGHT:
     case 'l':
-      //if (row && (get_filecol() < row->size - 1)) { 
+      ;
+      int fc = get_filecol();
+      int row_size = E.row[fr].size;
+      int line_in_row = 1 + fc/E.screencols; //counting from one
+      int total_lines = row_size/E.screencols;
+      if (row_size%E.screencols) total_lines++;
+      if (total_lines > line_in_row && E.cx >= E.screencols-1) {
+        E.cy++;
+        E.cx = 0;
+      } else E.cx++;
+      break;
+/*
       if (row && (get_filecol() < row->size)) { 
         if (E.cx >= E.screencols - 1) { // was just >
           E.cy++;
           E.cx = 0;
-        } else {E.cx++;}  
+        } else {E.cx++;} // note that final lines in function move cursor back if in normal mode and E.cx > line_char_count
       }
       break;
-
+*/
     case ARROW_UP:
     case 'k':
       lines = get_filecol()/E.screencols;
@@ -827,23 +837,22 @@ void editorMoveCursor(int key) {
     case ARROW_DOWN:
     case 'j':
       ;
-      // the line of code below makes the 1st line of a row the 0th line
+      // note that we are counting the initial line of a row as the 0th line
       int line = get_filecol()/E.screencols;
-      //if (get_filecol()%E.screencols != 0) line++;
-      //if (get_filecol() == 0) line++; 
-      //lines = 1 + row->size/E.screencols;
       
       //the below is one less than the number of lines
       lines =  row->size/E.screencols;
-      //if (row->size && row->size%E.screencols == 0) lines--;
+      if (row->size && row->size%E.screencols == 0) lines--;
+
       if (get_filerow() < E.filerows-1) E.cy = E.cy + lines - line + 1; 
       break;
   }
 
   /* Below deals with moving cursor up and down from longer rows to shorter rows 
-     row has to be calculated again because this is the new row you've landed on */
+     row has to be calculated again because this is the new row you've landed on 
+     Also deals with trying to move cursor to right beyond length of line.*/
 
-  int line_char_count = get_line_char_count(E.cy); 
+  int line_char_count = get_line_char_count(); 
   if (line_char_count == 0) E.cx = 0;
   else if (E.mode == 1 && E.cx >= line_char_count ) E.cx = line_char_count;
   else if (E.cx >= line_char_count) E.cx = line_char_count - 1;
@@ -946,6 +955,7 @@ void editorProcessKeypress(void) {
 
     case '\x1b':
       E.mode = 0;
+      E.continuation = 0; 
       if (E.cx > 0) E.cx--;
       // below - if the indent amount == size of line then it's all blanks
       int n = editorIndentAmount(get_filerow());
@@ -1659,36 +1669,18 @@ int get_filecol(void) {
   return col;
 }
 
-int get_line_char_count(int y) {
-  // n appears to equal the line in the row
-  int fr = get_filerow_by_line(y);
-  int n = 0;
-  int col;
-  for (;;) {
-    if (y == 0) break;
-    y--;
-    if (get_filerow_by_line(y) != fr) break;
-    n++;
-  }
-  if (E.row[fr].size == 0) return 0;
-  //below determines how many total lines
-  int lines = E.row[fr].size/E.screencols;
-  if (E.row[fr].size%E.screencols) lines++;
-  if (lines == 0) lines = 1;
+int get_line_char_count(void) {
 
-  // below returns a linei's character counts; note col will be one less
-  if (lines == (n + 1)) col = (E.row[fr].size%E.screencols);
-  else col = E.screencols;
-
-/* way as of 10-30-2018
-  if (E.row[fr].size > E.screencols) {
-    if ((n+1)*E.screencols < E.row[fr].size) col = E.screencols;
-    else col = E.row[fr].size - n*E.screencols; 
-  } else  col = E.row[fr].size;
-*/
-  return col;
+  int fc = get_filecol();
+  int fr = get_filerow();
+  int row_size = E.row[fr].size;
+  if (row_size <= E.screencols) return row_size;
+  int line_in_row = 1 + fc/E.screencols; //counting from one
+  int total_lines = row_size/E.screencols;
+  if (row_size%E.screencols) total_lines++;
+  if (line_in_row == total_lines) return row_size%E.screencols;
+  else return E.screencols;
 }
-
 void editorCreateSnapshot(void) {
   if ( E.filerows == 0 ) return; //don't create snapshot if there is no text
   for (int j = 0 ; j < E.prev_filerows ; j++ ) {
@@ -1881,21 +1873,17 @@ void editorMoveCursorBOL(void) {
 
 
 void editorMoveCursorEOL(void) {
+ // possibly should turn line in row and total lines into a function but use does vary a little so maybe not 
+  int fc = get_filecol();
   int fr = get_filerow();
-  int y = E.cy + 1;
-  for (;;) {
-    if (get_filerow_by_line(y) != fr) break;
-    y++;
-  }
-  E.cy = y - 1;
-
-  int size = E.row[fr].size;
-  if (size == 0) {
-    E.cx = 0;
-    return;
-  }
-  E.cx = E.row[fr].size%E.screencols - 1;
-  if (E.cx == 0) E.cx = E.screencols - 1;
+  int row_size = E.row[fr].size;
+  int line_in_row = 1 + fc/E.screencols; //counting from one
+  int total_lines = row_size/E.screencols;
+  if (row_size%E.screencols) total_lines++;
+  if (total_lines > line_in_row) E.cy = E.cy + total_lines - line_in_row;
+  int char_in_line = get_line_char_count();
+  if (char_in_line == 0) E.cx = 0; 
+  else E.cx = char_in_line - 1;
 }
 
 // not same as 'e' but moves to end of word or stays put if already on end of word
@@ -2195,7 +2183,7 @@ int main(int argc, char *argv[]) {
     editorRefreshScreen(); 
     editorProcessKeypress();
     if (E.row)
-  editorSetMessage("length = %d, E.cx = %d, E.cy = %d, filerow = %d, filecol = %d, size = %d, E.filerows = %d", get_line_char_count(E.cy), E.cx, E.cy, get_filerow(), get_filecol(), E.row[get_filerow()].size, E.filerows); 
+  editorSetMessage("length = %d, E.cx = %d, E.cy = %d, filerow = %d, filecol = %d, size = %d, E.filerows = %d", get_line_char_count(), E.cx, E.cy, get_filerow(), get_filecol(), E.row[get_filerow()].size, E.filerows); 
   else
   editorSetMessage("E.row is NULL, E.cx = %d, E.cy = %d,  E.filerows = %d", E.cx, E.cy, E.filerows); 
   }
