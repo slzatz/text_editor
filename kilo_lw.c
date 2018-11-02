@@ -145,6 +145,7 @@ int get_filecol(void);
 int get_filerow_by_line (int y);
 int get_filerow(void);
 int get_line_char_count (void); 
+int get_screenline_from_filerow(int fr);
 
 int keyfromstring(char *key)
 {
@@ -1135,7 +1136,8 @@ void editorProcessKeypress(void) {
 
     case 'G':
       E.cx = 0;
-      E.cy = E.filerows-1;
+      //E.cy = E.filerows-1;
+      E.cy = get_screenline_from_filerow(E.filerows-1);
       E.command[0] = '\0';
       E.repeat = 0;
       return;
@@ -1638,19 +1640,19 @@ int get_filerow_by_line (int y){
   return n;
 }
 
-// not in use but returns E.cy for a given filerow
+// returns E.cy for a given filerow - right now just used for 'G'
 int get_screenline_from_filerow (int fr){
-  int screenrow = -1;
+  int screenline = -1;
   int n = 0;
-  int screenlines;
+  int rowlines;
   if (fr == 0) return 0;
   for (n=0;n < fr + 1;n++) {
-    screenlines = E.row[n].size/E.screencols;
-    if (E.row[n].size%E.screencols) screenlines++;
-    if (screenlines == 0) screenlines = 1; // a row with no characters still takes up a line may also deal with last line
-    screenrow+= screenlines;
+    rowlines = E.row[n].size/E.screencols;
+    if (E.row[n].size%E.screencols) rowlines++;
+    if (rowlines == 0) rowlines = 1; // a row with no characters still takes up a line may also deal with last line
+    screenline+= rowlines;
   }
-  return screenrow;
+  return screenline;
 
 }
 
