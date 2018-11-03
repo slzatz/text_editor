@@ -1903,8 +1903,7 @@ void editorMoveEndWord2() {
 
 // used by 'w'
 void editorMoveNextWord(void) {
-  // below is same is editorMoveEndWord2
-  // small bug - if advances line doesn't catch first word
+// doesn't handle multiple white space characters at EOL
   int j;
   int fr = get_filerow();
   int fc = get_filecol();
@@ -1913,21 +1912,26 @@ void editorMoveNextWord(void) {
 
   if (row.chars[fc] < 48) j = fc;
   else {
-    for (j = fc + 1; j < row.size ; j++) {
+    for (j = fc + 1; j < row.size; j++) { 
       if (row.chars[j] < 48) break;
     }
   } 
-  if (j >= row.size) { // at end of line was ==
+  if (j >= row.size - 1) { // at end of line was ==
 
     if (fr == E.filerows - 1) return; // no more rows
     
-    fr++;
+    for (;;) {
+      fr++;
+      E.cy++;
+      row = E.row[fr];
+      if (row.size == 0 && fr == E.filerows - 1) return;
+      if (row.size) break;
+      }
+
     line_in_row = 0;
-    row = E.row[fr];
-    E.cy++;
     E.cx = 0;
     fc = 0;
-    if (row.chars[0] >= 48) return;
+    if (row.chars[0] >= 48) return;  //Since we went to a new row it must be beginning of a word if char in 0th position
   
   } else fc = j - 1;
   
@@ -1940,37 +1944,60 @@ void editorMoveNextWord(void) {
 }
 
 void editorMoveBeginningWord(void) {
-  erow *row = &E.row[E.cy];
-  if (E.cx == 0) return;
+  int fr = get_filerow();
+  int fc = get_filecol();
+  erow *row = &E.row[fr];
+  int line_in_row = fc/E.screencols; //counting from zero
+  if (fc == 0){ 
+    if (fr == 0) return;
+      for (;;) {
+        fr--;
+        E.cy--;
+        row = &E.row[fr];
+        if (row->size == 0 && fr==0) return;
+        if (row->size) break;
+      }
+    fc = row->size - 1;
+    line_in_row = fc/E.screencols;
+  }
+
+  int j = fc;
   for (;;) {
-    if (row->chars[E.cx - 1] < 48) E.cx--;
+    if (row->chars[j - 1] < 48) j--;
     else break;
-    if (E.cx == 0) return;
+    if (j == 0) return; 
   }
 
   int i;
-  for (i = E.cx - 1; i > -1; i--){
+  for (i = j - 1; i > -1; i--){
     if (row->chars[i] < 48) break;
   }
+  fc = i + 1;
 
-  E.cx = i + 1;
+  E.cx = fc%E.screencols;
+  E.cy = E.cy - line_in_row + fc/E.screencols;
 }
 
 void editorMoveEndWord(void) {
+// doesn't handle whitespace at the end of a line
   int fr = get_filerow();
   int fc = get_filecol();
   int line_in_row = fc/E.screencols; //counting from zero
   erow *row = &E.row[fr];
   int j;
 
-  if (fc >= row->size -1) {
+  if (fc >= row->size - 1) {
     if (fr == E.filerows - 1) return; // no more rows
     
-    fr++;
+    for (;;) {
+      fr++;
+      E.cy++;
+      row = &E.row[fr];
+      if (row->size == 0 && fr == E.filerows - 1) return;
+      if (row->size) break;
+      }
     line_in_row = 0;
-    row = &E.row[fr];
-    E.cy++;
-    E.cx = 0;
+    //E.cx = 0;
     fc = 0;
   }
   j = fc + 1;
