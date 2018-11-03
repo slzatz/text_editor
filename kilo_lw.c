@@ -1911,10 +1911,12 @@ void editorMoveNextWord(void) {
   int line_in_row = fc/E.screencols; //counting from zero
   erow row = E.row[fr];
 
-  for (j = fc + 1; j < row.size ; j++) {
-    if (row.chars[j] < 48) break;
-  }
-
+  if (row.chars[fc] < 48) j = fc;
+  else {
+    for (j = fc + 1; j < row.size ; j++) {
+      if (row.chars[j] < 48) break;
+    }
+  } 
   if (j >= row.size) { // at end of line was ==
 
     if (fr == E.filerows - 1) return; // no more rows
