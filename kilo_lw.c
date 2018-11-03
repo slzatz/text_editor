@@ -1915,7 +1915,7 @@ void editorMoveNextWord(void) {
     if (row.chars[j] < 48) break;
   }
 
-  if (j == row.size) { // at end of line
+  if (j >= row.size) { // at end of line was ==
 
     if (fr == E.filerows - 1) return; // no more rows
     
@@ -1955,20 +1955,37 @@ void editorMoveBeginningWord(void) {
 }
 
 void editorMoveEndWord(void) {
-  erow *row = &E.row[E.cy];
-  if (E.cx == row->size - 1) return;
-  for (;;) {
-    if (row->chars[E.cx + 1] < 48) E.cx++;
-    else break;
-    if (E.cx == row->size - 1) return;
-  }
-
+  int fr = get_filerow();
+  int fc = get_filecol();
+  int line_in_row = fc/E.screencols; //counting from zero
+  erow *row = &E.row[fr];
   int j;
-  for (j = E.cx + 1; j < row->size ; j++) {
+
+  if (fc >= row->size -1) {
+    if (fr == E.filerows - 1) return; // no more rows
+    
+    fr++;
+    line_in_row = 0;
+    row = &E.row[fr];
+    E.cy++;
+    E.cx = 0;
+    fc = 0;
+  }
+  j = fc + 1;
+  if (row->chars[j] < 48) {
+ 
+    for (j = fc + 1; j < row->size ; j++) {
+      if (row->chars[j] > 48) break;
+    }
+  }
+  //for (j = E.cx + 1; j < row->size ; j++) {
+  for (j++; j < row->size ; j++) {
     if (row->chars[j] < 48) break;
   }
 
-  E.cx = j - 1;
+  fc = j - 1;
+  E.cx = fc%E.screencols;
+  E.cy+=fc/E.screencols - line_in_row;
 }
 
 void editorDecorateWord(int c) {
