@@ -2081,16 +2081,18 @@ void editorDecorateVisual(int c) {
 }
 
 void getWordUnderCursor(void){
-  erow *row = &E.row[E.cy];
-  if (row->chars[E.cx] < 48) return;
+  int fr = get_filerow();
+  int fc = get_filecol();
+  erow *row = &E.row[fr];
+  if (row->chars[fc] < 48) return;
 
   int i,j,n,x;
 
-  for (i = E.cx - 1; i > -1; i--){
+  for (i = fc - 1; i > -1; i--){
     if (row->chars[i] < 48) break;
   }
 
-  for (j = E.cx + 1; j < row->size ; j++) {
+  for (j = fc + 1; j < row->size ; j++) {
     if (row->chars[j] < 48) break;
   }
 
@@ -2106,22 +2108,29 @@ void getWordUnderCursor(void){
 void editorFindNextWord(void) {
   int y, x;
   char *z;
-  y = E.cy;
-  x = E.cx + 1; //in case sitting on beginning of the word
+  int fc = get_filecol();
+  int fr = get_filerow();
+  y = fr;
+  x = fc + 1;
+  erow *row;
  
   /*n counter so we can exit for loop if there are  no matches for command 'n'*/
   for ( int n=0; n < E.filerows; n++ ) {
-    erow *row = &E.row[y];
+    row = &E.row[y];
     z = strstr(&(row->chars[x]), search_string);
     if ( z != NULL ) {
-      E.cy = y;
-      E.cx = z - row->chars;
       break;
     }
     y++;
     x = 0;
     if ( y == E.filerows ) y = 0;
   }
+  fc = z - row->chars;
+  E.cx = fc%E.screencols;
+  int line_in_row = 1 + fc/E.screencols; //counting from one
+  int total_lines = row->size/E.screencols;
+  if (row->size%E.screencols) total_lines++;
+  E.cy = get_screenline_from_filerow(y) - (total_lines - line_in_row); //that is screen line of last row in multi-row
 
     editorSetMessage("x = %d; y = %d", x, y); 
 }
