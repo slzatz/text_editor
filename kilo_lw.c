@@ -1136,7 +1136,6 @@ void editorProcessKeypress(void) {
 
     case 'G':
       E.cx = 0;
-      //E.cy = E.filerows-1;
       E.cy = get_screenline_from_filerow(E.filerows-1);
       E.command[0] = '\0';
       E.repeat = 0;
@@ -1153,7 +1152,6 @@ void editorProcessKeypress(void) {
       E.mode = 3;
       E.command[0] = '\0';
       E.repeat = 0;
-      //E.highlight[0] = E.highlight[1] = E.cy;
       E.highlight[0] = E.highlight[1] = get_filerow();
       editorSetMessage("\x1b[1m-- VISUAL LINE --\x1b[0m");
       return;
@@ -1873,7 +1871,6 @@ void editorMoveCursorBOL(void) {
   E.cy = y + 1;
 }
 
-
 void editorMoveCursorEOL(void) {
  // possibly should turn line in row and total lines into a function but use does vary a little so maybe not 
   int fc = get_filecol();
@@ -1889,33 +1886,55 @@ void editorMoveCursorEOL(void) {
 }
 
 // not same as 'e' but moves to end of word or stays put if already on end of word
+// used by dw
 void editorMoveEndWord2() {
   int j;
-  erow row = E.row[E.cy];
+  int fr = get_filerow();
+  int fc = get_filecol();
+  erow row = E.row[fr];
 
-  for (j = E.cx + 1; j < row.size ; j++) {
+  for (j = fc + 1; j < row.size ; j++) {
     if (row.chars[j] < 48) break;
   }
 
-  E.cx = j - 1;
+  fc = j - 1;
+  E.cx = fc%E.screencols;
 }
 
+// used by 'w'
 void editorMoveNextWord(void) {
   // below is same is editorMoveEndWord2
+  // small bug - if advances line doesn't catch first word
   int j;
-  erow row = E.row[E.cy];
+  int fr = get_filerow();
+  int fc = get_filecol();
+  int line_in_row = fc/E.screencols; //counting from zero
+  erow row = E.row[fr];
 
-  for (j = E.cx + 1; j < row.size ; j++) {
+  for (j = fc + 1; j < row.size ; j++) {
     if (row.chars[j] < 48) break;
   }
 
-  E.cx = j - 1;
-  // end editorMoveEndWord2
+  if (j == row.size) { // at end of line
 
-  for (j = E.cx + 1; j < row.size ; j++) { //+1
+    if (fr == E.filerows - 1) return; // no more rows
+    
+    fr++;
+    line_in_row = 0;
+    row = E.row[fr];
+    E.cy++;
+    E.cx = 0;
+    fc = 0;
+    if (row.chars[0] >= 48) return;
+  
+  } else fc = j - 1;
+  
+  for (j = fc + 1; j < row.size ; j++) { //+1
     if (row.chars[j] > 48) break;
   }
-  E.cx = j;
+  fc = j;
+  E.cx = fc%E.screencols;
+  E.cy+=fc/E.screencols - line_in_row;
 }
 
 void editorMoveBeginningWord(void) {
