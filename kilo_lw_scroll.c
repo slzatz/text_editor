@@ -624,17 +624,30 @@ void abFree(struct abuf *ab) {
 }
 
 /*** output ***/
-
+/* cursor can be move negative or beyond screen lines and also in wrong x and
+this function deals with that */
 void editorScroll(void) {
 
   if (E.cy >= E.screenrows) {
     int first_row_lines = E.row[get_filerow_by_line(0)].size/E.screencols + 1; //****
     if (E.row[get_filerow_by_line(0)].size && E.row[get_filerow_by_line(0)].size%E.screencols == 0) first_row_lines--;
     int delta = E.cy - E.screenrows + 1;
-    E.rowoff += (delta > first_row_lines) ? delta : first_row_lines;
-    //E.cy = get_screenline_from_filerow (fr + 1);
-    E.cy -= E.rowoff;
-}
+    delta = (delta > first_row_lines) ? delta : first_row_lines; //
+    E.rowoff += delta;
+    E.cy -= delta;
+  }
+  if (E.cy < 0) {
+     E.rowoff+=E.cy;
+     E.cy = 0;
+  }
+  /* Below deals with moving cursor up and down from longer rows to shorter rows 
+     row has to be calculated again because this is the new row you've landed on 
+     Also deals with trying to move cursor to right beyond length of line.*/
+
+  int line_char_count = get_line_char_count(); 
+  if (line_char_count == 0) E.cx = 0;
+  else if (E.mode == 1 && E.cx >= line_char_count ) E.cx = line_char_count;
+  else if (E.cx >= line_char_count) E.cx = line_char_count - 1;
   /*if (E.cy < E.rowoff) {
     E.rowoff = E.cy;
   }
@@ -846,15 +859,7 @@ void editorMoveCursor(int key) {
         E.cx = 0;
       } else E.cx++;
       break;
-/*
-      if (row && (get_filecol() < row->size)) { 
-        if (E.cx >= E.screencols - 1) { // was just >
-          E.cy++;
-          E.cx = 0;
-        } else {E.cx++;} // note that final lines in function move cursor back if in normal mode and E.cx > line_char_count
-      }
-      break;
-*/
+
     case ARROW_UP:
     case 'k':
       if (fr > 0) {
@@ -863,17 +868,12 @@ void editorMoveCursor(int key) {
         if (E.row[fr - 1].size%E.screencols) more_lines++;
         if (more_lines == 0) more_lines = 1;
         E.cy = E.cy - lines - more_lines;
-        if (E.cy < 0) {
+        if (0){
+        //if (E.cy < 0) {
           E.rowoff+=E.cy;
           E.cy = 0;
         }
       }
-
-      /*
-      if (E.cy != 0) E.cy = E.cy - lines - more_lines;
-      else {
-        if (E.rowoff) E.rowoff--; ////// if (E.cy < 0) E.cy = 0; E.rowoff = -E.cy
-      }*/  
       break;
 
     case ARROW_DOWN:
@@ -889,28 +889,11 @@ void editorMoveCursor(int key) {
       if (fr < E.filerows - 1) {
         int increment = lines - line + 1;
         E.cy += increment; 
-        if (0) {
-        //if (E.cy >= E.screenrows) {
-          int first_row_lines = E.row[get_filerow_by_line(0)].size/E.screencols + 1; //****
-          if (E.row[get_filerow_by_line(0)].size && E.row[get_filerow_by_line(0)].size%E.screencols == 0) first_row_lines--;
-          int delta = E.cy - E.screenrows + 1;
-          E.rowoff += (delta > first_row_lines) ? delta : first_row_lines;
-          E.cy = get_screenline_from_filerow (fr + 1);
-        }
       } 
       break;
   }
-
-  /* Below deals with moving cursor up and down from longer rows to shorter rows 
-     row has to be calculated again because this is the new row you've landed on 
-     Also deals with trying to move cursor to right beyond length of line.*/
-
-  int line_char_count = get_line_char_count(); 
-  if (line_char_count == 0) E.cx = 0;
-  else if (E.mode == 1 && E.cx >= line_char_count ) E.cx = line_char_count;
-  else if (E.cx >= line_char_count) E.cx = line_char_count - 1;
-
 }
+
 // higher level editor function depends on editorReadKey()
 void editorProcessKeypress(void) {
   static int quit_times = KILO_QUIT_TIMES;
