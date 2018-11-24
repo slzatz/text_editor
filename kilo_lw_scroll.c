@@ -631,10 +631,17 @@ void editorScroll(void) {
   if (E.cy >= E.screenrows) {
     int first_row_lines = E.row[get_filerow_by_line(0)].size/E.screencols + 1; //****
     if (E.row[get_filerow_by_line(0)].size && E.row[get_filerow_by_line(0)].size%E.screencols == 0) first_row_lines--;
-    int delta = E.cy - E.screenrows + 1;
+    int lines =  E.row[get_filerow()].size/E.screencols + 1;
+    if (E.row[get_filerow()].size%E.screencols == 0) lines--;
+    //int delta = E.cy - E.screenrows + 1;
+    int delta = E.cy + lines - E.screenrows; // is this always == lines ?????
     delta = (delta > first_row_lines) ? delta : first_row_lines; //
     E.rowoff += delta;
-    E.cy -= delta;
+    //E.cy -= delta; //doesn't work if filerow is multiple
+    //int lines =  E.row[get_filerow()].size/E.screencols + 1;
+    //if (E.row[get_filerow()].size%E.screencols == 0) lines--;
+    E.cy-=lines;
+    //E.cy-=(E.rowoff - 1);
   }
   if (E.cy < 0) {
      E.rowoff+=E.cy;
