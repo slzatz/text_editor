@@ -620,6 +620,7 @@ void abFree(struct abuf *ab) {
 /* cursor can be move negative or beyond screen lines and also in wrong x and
 this function deals with that */
 void editorScroll(void) {
+  if (!E.row) return;
   int lines =  E.row[get_filerow()].size/E.screencols + 1;
   if (E.row[get_filerow()].size%E.screencols == 0) lines--;
   //if (E.cy >= E.screenrows) {
