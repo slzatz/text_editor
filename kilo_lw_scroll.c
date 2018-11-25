@@ -452,10 +452,10 @@ void editorInsertNewline(int direction) {
     else i = 0;
 
     E.cy++;
-    if (E.cy == E.screenrows) {
-      E.rowoff++;
-      E.cy--;
-    }
+    //if (E.cy == E.screenrows) {
+    //  E.rowoff++;
+    //  E.cy--;
+    //}
 
     E.cx = 0;
     for (;;){
@@ -627,21 +627,23 @@ void abFree(struct abuf *ab) {
 /* cursor can be move negative or beyond screen lines and also in wrong x and
 this function deals with that */
 void editorScroll(void) {
-
-  if (E.cy >= E.screenrows) {
+  int lines =  E.row[get_filerow()].size/E.screencols + 1;
+  if (E.row[get_filerow()].size%E.screencols == 0) lines--;
+  //if (E.cy >= E.screenrows) {
+  if (E.cy + lines - 1 >= E.screenrows) {
+  /*  if (E.continuation) {
+      E.rowoff++; /////////////////////////
+      E.cy = E.screenrows - 1;
+      return;
+    }*/
     int first_row_lines = E.row[get_filerow_by_line(0)].size/E.screencols + 1; //****
     if (E.row[get_filerow_by_line(0)].size && E.row[get_filerow_by_line(0)].size%E.screencols == 0) first_row_lines--;
     int lines =  E.row[get_filerow()].size/E.screencols + 1;
     if (E.row[get_filerow()].size%E.screencols == 0) lines--;
-    //int delta = E.cy - E.screenrows + 1;
-    int delta = E.cy + lines - E.screenrows; // is this always == lines ?????
+    int delta = E.cy + lines - E.screenrows; //////
     delta = (delta > first_row_lines) ? delta : first_row_lines; //
     E.rowoff += delta;
-    //E.cy -= delta; //doesn't work if filerow is multiple
-    //int lines =  E.row[get_filerow()].size/E.screencols + 1;
-    //if (E.row[get_filerow()].size%E.screencols == 0) lines--;
-    E.cy-=lines;
-    //E.cy-=(E.rowoff - 1);
+    E.cy-=delta;
   }
   if (E.cy < 0) {
      E.rowoff+=E.cy;
@@ -673,7 +675,7 @@ void editorScroll(void) {
 // NOTE: when you can't display a whole file line in a multiline you go to the next file line: not implemented yet!!
 void editorDrawRows(struct abuf *ab) {
   int y = 0;
-  int len;
+  int len, n;
   //int filerow = 0;
   int filerow = get_filerow_by_line(0); //thought is find the first row given E.rowoff
 
@@ -695,14 +697,19 @@ void editorDrawRows(struct abuf *ab) {
 
     } else {
 
-      //if (y >= E.screenrows) break; //somehow making this >= made all the difference
-      /*new*/
-      //int lines = 1 + E.row[filerow].size/E.screencols; //+1
       int lines = E.row[filerow].size/E.screencols;
       if (E.row[filerow].size%E.screencols) lines++;
       if (lines == 0) lines = 1;
-      //int lines = 1 + E.row[filerow].size/(E.screencols); //? draw newline to soon when inserting although things almost work
-      for (int n=0; n<lines;n++) {
+      if ((y + lines) > E.screenrows) {
+          for (n=0; n < (E.screenrows - y);n++) {
+            abAppend(ab, "@", 2);
+            abAppend(ab, "\x1b[K", 3); 
+            abAppend(ab, "\r\n", 2); ///////////////////////////////////////////
+          }
+      break;
+      }      
+
+      for (n=0; n<lines;n++) {
         y++;
         int start = n*E.screencols;
         if ((E.row[filerow].size - n*E.screencols) > E.screencols) len = E.screencols;
@@ -732,7 +739,7 @@ void editorDrawRows(struct abuf *ab) {
 
       abAppend(ab, "\x1b[K", 3); 
       abAppend(ab, "\r\n", 2); ///////////////////////////////////////////
-    abAppend(ab, "\x1b[0m", 4); //slz return background to normal
+      abAppend(ab, "\x1b[0m", 4); //slz return background to normal
       }
 
       filerow++;
