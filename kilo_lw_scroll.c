@@ -380,18 +380,11 @@ void editorInsertChar(int c) {
   row->chars[fc] = c;
   E.dirty++;
 
-  if (E.cx >= E.screencols - 1) { 
-    // an alternative sould just be to have E.continuation
-    // and E.continued_line = get_filerow() and just check in get_filerow for
-    //E.continuation and then return E.continued_line
-    if (row->size%E.screencols == 0) E.continuation = 1;
+  if (E.cx >= E.screencols) {
     E.cy++; 
     E.cx = 0;
   }
-  else {
-    E.continuation = 0;
-    E.cx++;
-  }
+  E.cx++;
 }
 
 /* uses VLA */
@@ -437,10 +430,10 @@ void editorInsertNewline(int direction) {
     }
     E.cy = y;
     if (direction == 0) E.cy++;
-    if (E.cy == E.screenrows) {
-      E.rowoff++;
-      E.cy--;
-    }
+    //if (E.cy == E.screenrows) {
+    //  E.rowoff++;
+    //  E.cy--;
+   // }
     E.cx = i;
   }
   else {
@@ -500,7 +493,7 @@ void editorBackspace(void) {
     //memmove(dest, source, number of bytes to move?)
     memmove(&row->chars[fc - 1], &row->chars[fc], row->size - fc + 1);
     row->size--;
-    if (E.cx == 1 && row->size/E.screencols && fc > row->size) E.continuation = 1;
+    if (E.cx == 1 && row->size/E.screencols && fc > row->size) E.continuation = 1; //right now only backspace in multi-line
     E.cx--;
   } else { //else E.cx == 0 and could be multiline
     if (fc > 0) { //this means it's a multiline row and we're not at the top
@@ -631,11 +624,6 @@ void editorScroll(void) {
   if (E.row[get_filerow()].size%E.screencols == 0) lines--;
   //if (E.cy >= E.screenrows) {
   if (E.cy + lines - 1 >= E.screenrows) {
-  /*  if (E.continuation) {
-      E.rowoff++; /////////////////////////
-      E.cy = E.screenrows - 1;
-      return;
-    }*/
     int first_row_lines = E.row[get_filerow_by_line(0)].size/E.screencols + 1; //****
     if (E.row[get_filerow_by_line(0)].size && E.row[get_filerow_by_line(0)].size%E.screencols == 0) first_row_lines--;
     int lines =  E.row[get_filerow()].size/E.screencols + 1;
@@ -649,14 +637,7 @@ void editorScroll(void) {
      E.rowoff+=E.cy;
      E.cy = 0;
   }
-  /* Below deals with moving cursor up and down from longer rows to shorter rows 
-     row has to be calculated again because this is the new row you've landed on 
-     Also deals with trying to move cursor to right beyond length of line.*/
 
-  int line_char_count = get_line_char_count(); 
-  if (line_char_count == 0) E.cx = 0;
-  else if (E.mode == 1 && E.cx >= line_char_count ) E.cx = line_char_count;
-  else if (E.cx >= line_char_count) E.cx = line_char_count - 1;
   /*if (E.cy < E.rowoff) {
     E.rowoff = E.cy;
   }
@@ -906,8 +887,18 @@ void editorMoveCursor(int key) {
       } 
       break;
   }
-}
+  /* Below deals with moving cursor up and down from longer rows to shorter rows 
+     row has to be calculated again because this is the new row you've landed on 
+     Also deals with trying to move cursor to right beyond length of line.
+     E.mode == 1 is insert mode in the code below*/
 
+  int line_char_count = get_line_char_count(); 
+  if (line_char_count == 0) E.cx = 0;
+  else if (E.mode == 1) {
+    if (E.cx >= line_char_count) E.cx = line_char_count;
+    }
+  else if (E.cx >= line_char_count) E.cx = line_char_count - 1;
+}
 // higher level editor function depends on editorReadKey()
 void editorProcessKeypress(void) {
   static int quit_times = KILO_QUIT_TIMES;
@@ -1005,7 +996,7 @@ void editorProcessKeypress(void) {
 
     case '\x1b':
       E.mode = 0;
-      E.continuation = 0; 
+      E.continuation = 0; // right now used by backspace in multi-line filerow
       if (E.cx > 0) E.cx--;
       // below - if the indent amount == size of line then it's all blanks
       int n = editorIndentAmount(get_filerow());
@@ -1667,7 +1658,8 @@ int get_filerow(void) {
     if (screenrow >= y) break;
     n++;
   }
-  // this is for typing (inserting characters and crossing to the next screen line
+  // right now this is necesssary for backspacing in a multiline filerow
+  // no longer seems necessary for insertchar
   if (E.continuation) n--;
   return n;
 }
@@ -1686,8 +1678,6 @@ int get_filerow_by_line (int y){
     if (screenrow >= y) break;
     n++;
   }
-  // turns out we only need to deal with  E.continuation in get_filerow
-  //if (E.continuation) n--; 
   return n;
 }
 
