@@ -430,10 +430,6 @@ void editorInsertNewline(int direction) {
     }
     E.cy = y;
     if (direction == 0) E.cy++;
-    //if (E.cy == E.screenrows) {
-    //  E.rowoff++;
-    //  E.cy--;
-   // }
     E.cx = i;
   }
   else {
@@ -828,6 +824,8 @@ void editorSetMessage(const char *fmt, ...) {
 
 void editorMoveCursor(int key) {
 
+  if (!E.row) return; //could also be !E.filerows
+
   int fr = get_filerow();
   int lines;
   erow *row = &E.row[fr];
@@ -921,6 +919,7 @@ void editorProcessKeypress(void) {
 
     case '\r':
       editorCreateSnapshot();
+      E.cx = 0;
       editorInsertNewline(1);
       break;
 
