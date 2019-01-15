@@ -1711,7 +1711,7 @@ int editorGetScreenLineFromFileRow (int fr){
 
 int editorGetFileCol(void) {
   int n = 0;
-  int y = E.cy;
+  int y = E.cy + E.rowoff;
   int fr = editorGetFileRow();
   for (;;) {
     if (y == 0) break;
